@@ -1,0 +1,44 @@
+{
+  "modules": {
+    "description": "四大模块独立开关",
+    "type": "object",
+    "items": {
+      "enable_ocg": {
+        "description": "启用 OCG 模块（游戏王查卡/卡图/裁定/卡盒/禁卡表/RoTK饼图/YDK构筑/决斗模拟）",
+        "type": "bool",
+        "default": true
+      },
+      "enable_md": {
+        "description": "启用 Master Duel 模块（MD T表 / MD查卡组）",
+        "type": "bool",
+        "default": true
+      },
+      "enable_dl": {
+        "description": "启用 Duel Links 模块（DL T表 / DL查卡组）",
+        "type": "bool",
+        "default": true
+      },
+      "enable_ptcg": {
+        "description": "启用宝可梦 PTCG 模块（/宝可梦查卡 等）",
+        "type": "bool",
+        "default": true
+      }
+    }
+  },
+  "ptcg": {
+    "description": "PTCG 数据源设置",
+    "type": "object",
+    "items": {
+      "api_key": {
+        "description": "pokemontcg.io 可选 API Key（不填则使用 TCGdex 与低频率 pokemontcg.io）",
+        "type": "string",
+        "default": ""
+      },
+      "prefer_source": {
+        "description": "PTCG 优先数据源（tcgdex / pokemontcg）",
+        "type": "string",
+        "default": "tcgdex"
+      }
+    }
+  }
+}

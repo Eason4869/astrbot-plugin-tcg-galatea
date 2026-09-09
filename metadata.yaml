@@ -1,0 +1,6 @@
+name: astrbot_plugin_tcg_galatea
+display_name: TCG Galatea 多游戏工具箱
+desc: 游戏王 + 宝可梦多游戏工具箱。OCG/MD/DL/PTCG 四大模块独立开关：游戏王查卡、禁卡表、RoTK饼图、YDK构筑与决斗模拟，DL/MD T表，以及基于 TCGdex/pokemontcg.io 的宝可梦查卡。
+version: 2.0.0
+author: Noctfom, Eason4869
+repo: https://github.com/Eason4869/astrbot-plugin-tcg-galatea
