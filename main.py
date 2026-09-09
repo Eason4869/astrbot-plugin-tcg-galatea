@@ -79,31 +79,80 @@ class YugiohCardSearcher:
         if self.session:
             await self.session.close()
 
+    async def _get_json(self, url: str, timeout: int = 15, retries: int = 2) -> Dict[str, Any]:
+        """带重试的 JSON GET（兼容代理/偶发超时）。"""
+        last_err = ""
+        for i in range(retries + 1):
+            try:
+                to = aiohttp.ClientTimeout(total=timeout)
+                async with self.session.get(url, timeout=to, ssl=False) as response:
+                    if response.status == 200:
+                        return await response.json(content_type=None)
+                    last_err = f"HTTP {response.status}"
+            except Exception as e:
+                last_err = str(e) or e.__class__.__name__
+            if i < retries:
+                await asyncio.sleep(0.4 * (i + 1))
+        return {"error": last_err}
+
     async def search_card(self, query: str) -> Dict[str, Any]:
-        """异步搜索卡片"""
-        try:
-            url = f"{self.base_url}/?search={query}"
-            async with self.session.get(url, timeout=10, ssl=False) as response:
-                if response.status == 200:
-                    # 修复：必须返回解析后的 JSON
-                    return await response.json(content_type=None)
-                else:
-                    return {"error": f"API请求失败: {response.status}"}
-        except Exception as e:
-            return {"error": f"搜索出错: {str(e)}"}
+        """搜索卡片：支持卡名模糊、卡密、中英文。
+
+        - 纯数字卡密：优先按 ID 精确详情
+        - 其它：全库模糊检索
+        """
+        q = (query or "").strip()
+        if not q:
+            return {"error": "搜索词为空"}
+
+        # 卡密搜索：纯数字且长度合理
+        if q.isdigit() and 4 <= len(q) <= 10:
+            detail = await self.get_card_detail(q)
+            if "error" not in detail and (detail.get("id") or detail.get("cn_name")):
+                # 包装成列表，与搜索结果结构兼容
+                item = {
+                    "id": detail.get("id", q),
+                    "cid": detail.get("cid"),
+                    "cn_name": detail.get("cn_name", "未知"),
+                    "sc_name": detail.get("sc_name", ""),
+                    "type": detail.get("type", ""),
+                    "text": detail.get("text", {}),
+                    "data": detail.get("data", {}),
+                    "detail": detail,
+                }
+                return {"result": [item], "mode": "id"}
+            # 卡密没命中再走名称搜索兜底
+
+        enc = quote(q, safe="")
+        url = f"{self.base_url}/?search={enc}"
+        data = await self._get_json(url, timeout=15)
+        if "error" in data:
+            return {"error": f"搜索出错: {data['error']}"}
+        results = data.get("result") or []
+        # 百鸽已做模糊匹配；若为空再试去空格/更短词
+        if not results:
+            alt = q.replace(" ", "").replace("-", "")
+            if alt and alt != q:
+                data2 = await self._get_json(f"{self.base_url}/?search={quote(alt, safe='')}", timeout=15)
+                results = (data2 or {}).get("result") or []
+                data = data2 if results else data
+        data["mode"] = data.get("mode", "fuzzy")
+        data.setdefault("result", results)
+        return data
 
     async def get_card_detail(self, card_id: str) -> Dict[str, Any]:
-        """异步获取卡片详情"""
-        try:
-            url = f"{self.base_url}/card/{card_id}?show=all"
-            async with self.session.get(url, timeout=10, ssl=False) as response:
-                if response.status == 200:
-                    # 修复：必须返回解析后的 JSON
-                    return await response.json(content_type=None)
-                else:
-                    return {"error": f"获取详情失败: {response.status}"}
-        except Exception as e:
-            return {"error": f"获取详情出错: {str(e)}"}
+        """获取卡片详情（卡密）。"""
+        cid = str(card_id).strip()
+        if not cid:
+            return {"error": "卡片密码为空"}
+        url = f"{self.base_url}/card/{cid}?show=all"
+        data = await self._get_json(url, timeout=15, retries=2)
+        if "error" in data:
+            return {"error": f"获取详情出错: {data['error']}"}
+        # 校验是否真是卡片对象
+        if not any(k in data for k in ("id", "cn_name", "data", "text")):
+            return {"error": f"详情数据异常: {str(data)[:120]}"}
+        return data
 
     def format_card_info(self, card_data: Dict[str, Any]) -> str:
         """格式化卡片信息（重构版，拆分逻辑）"""
@@ -224,8 +273,9 @@ class YugiohCardSearcher:
             type_map = {"monster": "[怪兽]", "spell": "[魔法]", "trap": "[陷阱]"}
             type_tag = type_map.get(card_type, "")
             output.append("{}. {} {}".format(i, name, type_tag))
+        mode = ""
         output.append(
-            "\n💡 /OCG序号 <序号> 查看详情 · /OCG换页 <页码> 切换"
+            "\n💡 序号 <n> 查看详情(自动出卡图) · 换页 <n> · 也可直接查卡密"
         )
         return "\n".join(output)
     
@@ -301,7 +351,7 @@ class YugiohCardSearcher:
         return text.strip()
 
 
-@register("tcg_galatea", "Noctfom, Eason4869", "TCG工具箱", "2.2.0")
+@register("tcg_galatea", "Noctfom, Eason4869", "TCG工具箱", "2.2.1")
 class TCGGalateaPlugin(Star):
     def __init__(self, context=None, config: AstrBotConfig = None):
         super().__init__(context, config)
@@ -504,45 +554,61 @@ class TCGGalateaPlugin(Star):
         logger.warning(f"DuelGalatea: 无法识别会话 ID，使用 default。Obj: {obj}")
         return "default"
     
-    async def _send_card_detail(self, event: AstrMessageEvent, card_id: str, card_name_fallback: str = "未知"):
-        """获取详情、更新缓存、拼接G点信息并发送"""
-        user_id = getattr(event.message_obj, "sender_id", "unknown") # 获取用户ID用于缓存
-        
-        # 1. 获取详情
-        detail = await self.card_searcher.get_card_detail(str(card_id))
+    async def _send_card_detail(self, event: AstrMessageEvent, card_id: str, card_name_fallback: str = "未知", prefetched: Dict = None):
+        """获取详情、缓存，自动附带高清卡图后发送。"""
+        user_id = self._get_uid(event) if hasattr(self, "_get_uid") else getattr(event.message_obj, "sender_id", "unknown")
+        cid = str(card_id)
+
+        detail = prefetched if (prefetched and "error" not in prefetched) else None
+        if not detail:
+            detail = await self.card_searcher.get_card_detail(cid)
         if "error" in detail:
-            await event.send(event.plain_result(f"获取详情失败: {detail['error']}"))
+            # 详情失败时用 CDN 高清图 + 卡密提示，不直接抛错
+            logger.warning(f"详情获取失败 cid={cid}: {detail.get('error')}")
+            await event.send(event.plain_result(
+                f"⚠️ 详情接口暂时失败: {detail.get('error')}\n"
+                f"卡片密码: {cid}\n高清图: https://cdn.233.momobako.com/ygopro/pics/{cid}.jpg"
+            ))
+            # 仍尝试发图
+            try:
+                await event.send(event.image_result(f"https://cdn.233.momobako.com/ygopro/pics/{cid}.jpg"))
+            except Exception:
+                pass
             return
 
-        # 2. === 关键：更新最后查看的卡片缓存 ===
-        # 这样 /发送高清卡图、/查裁定 都能用了
         self.last_viewed_cards[user_id] = {
-            "card_id": str(card_id),
+            "card_id": cid,
             "card_name": detail.get("cn_name", card_name_fallback),
             "card_data": detail,
         }
 
-        # 3. 格式化基础文本
         formatted_detail = self.card_searcher.format_card_info(detail)
-
-        # 4. 拼接禁卡/Genesys信息
-        status_info = self.banlist_manager.get_card_status(str(card_id))
+        status_info = self.banlist_manager.get_card_status(cid)
         tags = []
-        if status_info["sc"] != "无限制": tags.append(f"🇨🇳简中:{status_info['sc']}")
-        if status_info["ocg"] != "无限制": tags.append(f"🇯🇵OCG:{status_info['ocg']}")
-        if status_info["genesys"] > 0: tags.append(f"🧬Genesys:{status_info['genesys']}pt")
-            
+        if status_info.get("sc") and status_info["sc"] != "无限制":
+            tags.append(f"🇨🇳简中:{status_info['sc']}")
+        if status_info.get("ocg") and status_info["ocg"] != "无限制":
+            tags.append(f"🇯🇵OCG:{status_info['ocg']}")
+        if status_info.get("genesys", 0) > 0:
+            tags.append(f"🧬Genesys:{status_info['genesys']}pt")
         if tags:
             formatted_detail += "\n" + " | ".join(tags)
+        formatted_detail += f"\n\n📎 可用 /OCG裁定 查看官方裁定"
 
-        # 5. 下载图片并发送
         chain = []
-        local_img = await self.ydk_manager._download_image(self.card_searcher.session, str(card_id))
+        # 优先本地高清图
+        local_img = await self.ydk_manager._download_image(self.card_searcher.session, cid)
         if local_img:
-            temp_path = os.path.join(self.ydk_manager.images_dir, f"temp_{card_id}.jpg")
+            temp_path = os.path.join(self.ydk_manager.images_dir, f"temp_{cid}.jpg")
             local_img.save(temp_path)
             chain.append(Comp.Image.fromFileSystem(temp_path))
-        
+        else:
+            # CDN 高清兜底
+            cdn = f"https://cdn.233.momobako.com/ygopro/pics/{cid}.jpg"
+            try:
+                chain.append(Comp.Image.fromURL(cdn))
+            except Exception:
+                pass
         chain.append(Comp.Plain(formatted_detail))
         await event.send(event.chain_result(chain))
 
@@ -560,12 +626,20 @@ class TCGGalateaPlugin(Star):
     # ---------- YGO 共用（OCG / MD / DL） ----------
 
     async def _ygo_search(self, event: AstrMessageEvent):
+        """查卡：卡名模糊 / 卡密精确 / 全库检索。"""
         user_id = self._get_uid(event)
-        parts = event.get_message_str().strip().split()
+        raw = event.get_message_str().strip()
+        parts = raw.split(maxsplit=1)
         if len(parts) <= 1:
-            await event.send(event.plain_result("用法: 查卡 <卡名>\n例如: 查卡 青眼白龙"))
+            await event.send(event.plain_result(
+                "用法: 查卡 <卡名或卡密>\n"
+                "• 模糊: 查卡 青眼\n"
+                "• 全名: 查卡 青眼白龙\n"
+                "• 卡密: 查卡 89631139"
+            ))
             return
-        query = " ".join(parts[1:])
+        query = parts[1].strip()
+        await event.send(event.plain_result(f"🔍 正在检索「{query}」..."))
         result = await self.card_searcher.search_card(query)
         if "error" in result:
             await event.send(event.plain_result(f"❌ 搜索出错: {result['error']}"))
@@ -574,13 +648,18 @@ class TCGGalateaPlugin(Star):
         if not results:
             await event.send(event.plain_result(f"⚠️ 未找到与「{query}」相关的卡片"))
             return
-        if len(results) == 1:
-            await self._send_card_detail(event, results[0]["id"], results[0].get("cn_name", query))
+        # 卡密命中或唯一结果：直接详情 + 高清卡图
+        if result.get("mode") == "id" or len(results) == 1:
+            card = results[0]
+            prefetched = card.get("detail")
+            await self._send_card_detail(
+                event, card["id"], card.get("cn_name", query), prefetched=prefetched
+            )
             return
-        self.search_sessions[user_id] = {"results": results}
-        await event.send(
-            event.plain_result(self.card_searcher.format_search_results(results, 1, user_id))
-        )
+        self.search_sessions[user_id] = {"results": results, "query": query}
+        hint = self.card_searcher.format_search_results(results, 1, user_id)
+        hint += f"\n\n🔎 已全库模糊匹配，共 {len(results)} 条"
+        await event.send(event.plain_result(hint))
 
     async def _ygo_select(self, event: AstrMessageEvent):
         user_id = self._get_uid(event)
@@ -613,25 +692,6 @@ class TCGGalateaPlugin(Star):
                 self.card_searcher.format_search_results(results, int(parts[1]), user_id)
             )
         )
-
-    async def _ygo_image(self, event: AstrMessageEvent):
-        user_id = self._get_uid(event)
-        parts = event.get_message_str().strip().split()
-        if len(parts) > 1:
-            if not parts[1].isdigit():
-                await event.send(event.plain_result("卡片密码必须是数字"))
-                return
-            card_id = parts[1]
-        elif user_id in self.last_viewed_cards:
-            card_id = self.last_viewed_cards[user_id]["card_id"]
-        else:
-            await event.send(event.plain_result("请先查卡，或 卡图 <密码>"))
-            return
-        url = f"https://cdn.233.momobako.com/ygopro/pics/{card_id}.jpg"
-        try:
-            await event.send(event.image_result(url))
-        except Exception:
-            await event.send(event.plain_result(url))
 
     async def _ygo_rulings(self, event: AstrMessageEvent):
         user_id = self._get_uid(event)
@@ -688,12 +748,6 @@ class TCGGalateaPlugin(Star):
             return await self._deny_module(event, "OCG")
         await self._ygo_page(event)
 
-    @filter.command("OCG卡图", alias=["/OCG卡图", "/发送高清卡图"])
-    async def cmd_ocg_image(self, event):
-        if not self.ocg_on:
-            return await self._deny_module(event, "OCG")
-        await self._ygo_image(event)
-
     @filter.command("OCG裁定", alias=["/OCG裁定", "/查询裁定"])
     async def cmd_ocg_rulings(self, event):
         if not self.ocg_on:
@@ -749,7 +803,10 @@ class TCGGalateaPlugin(Star):
                 target_env, target_name = "sc", "简中"
             elif "OCG" in p:
                 target_env, target_name = "ocg", "OCG"
-        await event.send(event.plain_result(f"⏳ 正在获取 {target_name} 禁卡表..."))
+        await event.send(event.plain_result(
+            f"⏳ 正在获取 {target_name} 禁卡表...\n"
+            f"首次更新需解析卡名，可能需要 1–3 分钟，请耐心等待。"
+        ))
         success, info, changes = await self.banlist_manager.update_banlist(
             target_env, self.card_searcher
         )
@@ -783,12 +840,6 @@ class TCGGalateaPlugin(Star):
         if not self.md_on:
             return await self._deny_module(event, "MD")
         await self._ygo_page(event)
-
-    @filter.command("MD卡图", alias=["/MD卡图"])
-    async def cmd_md_image(self, event):
-        if not self.md_on:
-            return await self._deny_module(event, "MD")
-        await self._ygo_image(event)
 
     @filter.command("MD裁定", alias=["/MD裁定"])
     async def cmd_md_rulings(self, event):
@@ -838,12 +889,6 @@ class TCGGalateaPlugin(Star):
         if not self.dl_on:
             return await self._deny_module(event, "DL")
         await self._ygo_page(event)
-
-    @filter.command("DL卡图", alias=["/DL卡图"])
-    async def cmd_dl_image(self, event):
-        if not self.dl_on:
-            return await self._deny_module(event, "DL")
-        await self._ygo_image(event)
 
     @filter.command("DL裁定", alias=["/DL裁定"])
     async def cmd_dl_rulings(self, event):
@@ -980,25 +1025,6 @@ class TCGGalateaPlugin(Star):
         }
         await event.send(event.plain_result(self.ptcg_searcher.format_search_page(page_data)))
 
-    @filter.command("PTCG卡图", alias=["/PTCG卡图", "/宝可梦高清卡图"])
-    async def cmd_ptcg_image(self, event):
-        if not self.ptcg_on:
-            return await self._deny_module(event, "PTCG")
-        user_id = self._get_uid(event)
-        if user_id not in self.ptcg_searcher.last_viewed:
-            await event.send(event.plain_result("请先 /PTCG查卡"))
-            return
-        img = self.ptcg_searcher.image_url(
-            self.ptcg_searcher.last_viewed[user_id].get("card_data") or {}
-        )
-        if not img:
-            await event.send(event.plain_result("未找到卡图"))
-            return
-        try:
-            await event.send(event.image_result(img))
-        except Exception:
-            await event.send(event.plain_result(img))
-
     @filter.command("PTCG裁定", alias=["/PTCG裁定"])
     async def cmd_ptcg_rulings(self, event):
         if not self.ptcg_on:
@@ -1049,38 +1075,37 @@ class TCGGalateaPlugin(Star):
         md = "✅" if self.md_on else "❌"
         dl = "✅" if self.dl_on else "❌"
         pt = "✅" if self.ptcg_on else "❌"
-        text = f"""TCG工具箱 v2.2.0
+        text = f"""TCG工具箱 v2.2.1
 ================================
 全局
 • /TCG帮助  /TCG状态
 
 OCG 游戏王 [{ocg}]
-• /OCG查卡 <卡名>
+• /OCG查卡 <卡名或卡密>（模糊/全名/卡密，自动出高清卡图）
 • /OCG序号 <n>  /OCG换页 <n>
-• /OCG卡图 [CID]
-• /OCG裁定
+• /OCG裁定（须先查到具体卡）
 • /OCG饼图[更新]
-• /OCG禁卡表 [OCG|简中]
+• /OCG禁卡表 [OCG|简中]（较慢，约1-3分钟）
 • /OCG随机
 
 MD Master Duel [{md}]
-• /MD查卡 /MD序号 /MD换页 /MD卡图
+• /MD查卡 /MD序号 /MD换页
 • /MD裁定 /MD随机
 • /MD饼图[更新]（T表）
 • /MD禁卡表（预留）
 
 DL Duel Links [{dl}]
-• /DL查卡 /DL序号 /DL换页 /DL卡图
+• /DL查卡 /DL序号 /DL换页
 • /DL裁定 /DL随机
 • /DL饼图[更新]（T表）
 • /DL禁卡表（预留）
 
 PTCG 宝可梦 [{pt}]
-• /PTCG查卡 <中/英>
-• /PTCG序号 /PTCG换页 /PTCG卡图
+• /PTCG查卡 <中/英>（自动出高清卡图）
+• /PTCG序号 /PTCG换页
 • /PTCG裁定（预留）/PTCG随机
 • /PTCG饼图 /PTCG禁卡表（预留）
 
-风格: 查卡 → 裁定 → 饼图 → 禁卡表 → 随机
+查卡 → 自动详情+卡图 → 可再查裁定
 ================================"""
         await event.send(event.plain_result(text))

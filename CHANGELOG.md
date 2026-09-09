@@ -6,6 +6,26 @@
 
 - 规划：MTG / WS / VG 等新卡牌游戏模块
 - PTCG / MD / DL 的饼图与禁卡表数据源
+- 禁卡表首次更新卡名解析加速（本地映射预热）
+
+---
+
+## [2.2.1] - 2026-09-09
+
+### Fixed
+- **查卡详情失败**：请求改为 URL 编码 + 超时重试；详情接口失败时回退 CDN 高清图并提示卡密
+- **禁卡表「无返回」误判**：接口本身正常，首次更新需逐卡解析较慢；文案标明约 1–3 分钟
+
+### Added
+- 查卡支持 **模糊搜索 / 全名 / 卡密**（纯数字自动走 ID 详情）
+- 卡密或唯一结果时直接返回详情 + **自动高清卡图**
+- 搜索结果提示支持卡密
+
+### Changed
+- 版本 `2.2.0` → `2.2.1`
+
+### Removed
+- `/OCG卡图` `/MD卡图` `/DL卡图` `/PTCG卡图`（查卡后自动出图，不再单独指令）
 
 ---
 
@@ -115,7 +135,8 @@
 
 ---
 
-[Unreleased]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/compare/v2.2.1...HEAD
+[2.2.1]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v2.2.1
 [2.2.0]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v2.2.0
 [2.1.0]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v2.1.0
 [2.0.0]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v2.0.0
