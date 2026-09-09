@@ -9,6 +9,15 @@
 
 ---
 
+## [2.3.1] - 2026-09-09
+
+### Fixed
+- **`NameError: name 'quote' is not defined`**：补上 `from urllib.parse import quote`
+- **PTCG 卡图 QQ 上传失败**（highway error 921）：改为先发文本再发图；优先下载本地/TCGdex low 图；失败回退为文字链接
+- OCG/简中/MD/DL 查卡发图同样改为「文本优先 + 图失败不炸」
+
+---
+
 ## [2.3.0] - 2026-09-09
 
 ### Added

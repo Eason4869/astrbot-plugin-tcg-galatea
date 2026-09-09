@@ -14,6 +14,7 @@ import random
 import re
 import asyncio
 from typing import Dict, Any, List
+from urllib.parse import quote
 import aiohttp
 import html
 
@@ -351,7 +352,7 @@ class YugiohCardSearcher:
         return text.strip()
 
 
-@register("tcg_galatea", "Noctfom, Eason4869", "TCG工具箱", "2.3.0")
+@register("tcg_galatea", "Noctfom, Eason4869", "TCG工具箱", "2.3.1")
 class TCGGalateaPlugin(Star):
     def __init__(self, context=None, config: AstrBotConfig = None):
         super().__init__(context, config)
@@ -562,6 +563,32 @@ class TCGGalateaPlugin(Star):
         logger.warning(f"DuelGalatea: 无法识别会话 ID，使用 default。Obj: {obj}")
         return "default"
     
+    async def _safe_send_text_then_image(
+        self,
+        event: AstrMessageEvent,
+        text: str,
+        image_path: str = None,
+        image_url: str = None,
+    ):
+        """先发文本，再尝试发图；图失败只回退链接，不让整条指令炸掉。"""
+        await event.send(event.plain_result(text))
+        if image_path and os.path.exists(image_path):
+            try:
+                await event.send(event.image_result(image_path))
+                return
+            except Exception as e:
+                logger.warning(f"本地图发送失败: {e}")
+        if image_url:
+            try:
+                await event.send(event.image_result(image_url))
+                return
+            except Exception as e:
+                logger.warning(f"URL图发送失败: {e}")
+                try:
+                    await event.send(event.plain_result(f"🖼 卡图: {image_url}"))
+                except Exception:
+                    pass
+
     async def _send_card_detail(self, event: AstrMessageEvent, card_id: str, card_name_fallback: str = "未知", prefetched: Dict = None):
         """获取详情、缓存，自动附带高清卡图后发送。"""
         user_id = self._get_uid(event) if hasattr(self, "_get_uid") else getattr(event.message_obj, "sender_id", "unknown")
@@ -571,17 +598,12 @@ class TCGGalateaPlugin(Star):
         if not detail:
             detail = await self.card_searcher.get_card_detail(cid)
         if "error" in detail:
-            # 详情失败时用 CDN 高清图 + 卡密提示，不直接抛错
             logger.warning(f"详情获取失败 cid={cid}: {detail.get('error')}")
-            await event.send(event.plain_result(
-                f"⚠️ 详情接口暂时失败: {detail.get('error')}\n"
-                f"卡片密码: {cid}\n高清图: https://cdn.233.momobako.com/ygopro/pics/{cid}.jpg"
-            ))
-            # 仍尝试发图
-            try:
-                await event.send(event.image_result(f"https://cdn.233.momobako.com/ygopro/pics/{cid}.jpg"))
-            except Exception:
-                pass
+            await self._safe_send_text_then_image(
+                event,
+                f"⚠️ 详情接口暂时失败: {detail.get('error')}\n卡片密码: {cid}",
+                image_url=f"https://cdn.233.momobako.com/ygopro/pics/{cid}.jpg",
+            )
             return
 
         self.last_viewed_cards[user_id] = {
@@ -601,24 +623,19 @@ class TCGGalateaPlugin(Star):
             tags.append(f"🧬Genesys:{status_info['genesys']}pt")
         if tags:
             formatted_detail += "\n" + " | ".join(tags)
-        formatted_detail += f"\n\n📎 可用 /OCG裁定 查看官方裁定"
+        formatted_detail += "\n\n📎 查到具体卡后可使用 裁定 子指令"
 
-        chain = []
-        # 优先本地高清图
+        local_path = None
         local_img = await self.ydk_manager._download_image(self.card_searcher.session, cid)
         if local_img:
-            temp_path = os.path.join(self.ydk_manager.images_dir, f"temp_{cid}.jpg")
-            local_img.save(temp_path)
-            chain.append(Comp.Image.fromFileSystem(temp_path))
-        else:
-            # CDN 高清兜底
-            cdn = f"https://cdn.233.momobako.com/ygopro/pics/{cid}.jpg"
-            try:
-                chain.append(Comp.Image.fromURL(cdn))
-            except Exception:
-                pass
-        chain.append(Comp.Plain(formatted_detail))
-        await event.send(event.chain_result(chain))
+            local_path = os.path.join(self.ydk_manager.images_dir, f"temp_{cid}.jpg")
+            local_img.save(local_path)
+        await self._safe_send_text_then_image(
+            event,
+            formatted_detail,
+            image_path=local_path,
+            image_url=f"https://cdn.233.momobako.com/ygopro/pics/{cid}.jpg",
+        )
 
 
 
@@ -1049,6 +1066,31 @@ class TCGGalateaPlugin(Star):
                 return en
         return q
 
+    async def _download_to_temp(self, url: str, name: str) -> str:
+        """把远程图下载到数据目录，避免 QQ 高速路直接传大图失败。"""
+        if not url:
+            return ""
+        try:
+            tmp_dir = os.path.join(self.data_dir, "ptcg_img")
+            os.makedirs(tmp_dir, exist_ok=True)
+            path = os.path.join(tmp_dir, f"{name}.jpg")
+            to = aiohttp.ClientTimeout(total=20)
+            async with self.ptcg_searcher.session.get(url, timeout=to, ssl=False) as resp:
+                if resp.status != 200:
+                    return ""
+                data = await resp.read()
+            if not data or len(data) < 200:
+                return ""
+            # 超过 3MB 的先不落盘发原图，交给 URL 回退
+            if len(data) > 3 * 1024 * 1024:
+                return ""
+            with open(path, "wb") as f:
+                f.write(data)
+            return path
+        except Exception as e:
+            logger.warning(f"下载卡图失败: {e}")
+            return ""
+
     async def _send_ptcg_detail(self, event: AstrMessageEvent, card_id: str):
         user_id = self._get_uid(event)
         detail = await self.ptcg_searcher.get_detail(card_id)
@@ -1060,15 +1102,25 @@ class TCGGalateaPlugin(Star):
             "card_name": detail.get("name", "未知"),
             "card_data": detail,
         }
-        chain = []
+        text = self.ptcg_searcher.format_detail(detail)
         img = self.ptcg_searcher.image_url(detail)
-        if img:
-            try:
-                chain.append(Comp.Image.fromURL(img))
-            except Exception:
-                pass
-        chain.append(Comp.Plain(self.ptcg_searcher.format_detail(detail)))
-        await event.send(event.chain_result(chain))
+        # TCGdex 原图偏大，优先用 low 版
+        img_low = ""
+        if img and "assets.tcgdex.net" in img and not img.endswith("/low"):
+            img_low = img.rstrip("/") + "/low"
+        local = ""
+        for u in (img_low, img):
+            if not u:
+                continue
+            local = await self._download_to_temp(u, str(detail.get("id", "card")).replace("/", "_"))
+            if local:
+                break
+        await self._safe_send_text_then_image(
+            event,
+            text,
+            image_path=local or None,
+            image_url=img or None,
+        )
 
     @group_ptcg.command("查卡", alias={"search", "Search"})
     async def ptcg_search(self, event: AstrMessageEvent):
@@ -1200,7 +1252,7 @@ class TCGGalateaPlugin(Star):
         md = "✅" if self.md_on else "❌"
         dl = "✅" if self.dl_on else "❌"
         pt = "✅" if self.ptcg_on else "❌"
-        text = f"""TCG工具箱 v2.3.0
+        text = f"""TCG工具箱 v2.3.1
 ================================
 全局
 • TCG帮助  TCG状态
