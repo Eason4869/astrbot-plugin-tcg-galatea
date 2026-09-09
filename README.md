@@ -1,7 +1,7 @@
 # 🟩 TCG工具箱
 
 <p align="center">
-  <img src="./logo.png" width="128" height="128" alt="TCG工具箱 Logo" />
+  <img src="https://raw.githubusercontent.com/Eason4869/astrbot-plugin-tcg-galatea/main/logo.png" width="128" height="128" alt="TCG工具箱 Logo" />
 </p>
 
 <p align="center">
