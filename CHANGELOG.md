@@ -10,6 +10,13 @@
 ---
 
 
+
+## [2.4.3] - 2026-09-09
+
+### Fixed
+- **PTCG 查卡**：多结果一律回列表（去掉全名直出详情）
+- **PTCG 随机**：改用高可用常见名，去掉多余的详情预检，确保带卡图
+
 ## [2.4.2] - 2026-09-09
 
 ### Fixed
@@ -137,4 +144,5 @@
 [2.2.0]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v2.2.0
 [2.1.0]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v2.1.0
 [2.0.0]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v2.0.0
+
 

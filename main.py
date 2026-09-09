@@ -351,7 +351,7 @@ class YugiohCardSearcher:
         return text.strip()
 
 
-@register("tcg_galatea", "Noctfom, Eason4869", "TCG工具箱", "2.4.2")
+@register("tcg_galatea", "Noctfom, Eason4869", "TCG工具箱", "2.4.3")
 class TCGGalateaPlugin(Star):
     def __init__(self, context=None, config: AstrBotConfig = None):
         super().__init__(context, config)
@@ -997,13 +997,9 @@ class TCGGalateaPlugin(Star):
             await event.send(event.plain_result(f"❌ {result['error']}"))
             return
         results = result["all_results"]
+        # 仅唯一结果才直出详情；多结果一律列表，便于 /PTCG 序号
         if len(results) == 1:
             await self._send_ptcg_detail(event, results[0]["id"])
-            return
-        # 命中英文全名则直接出详情+卡图，避免只回列表
-        exact = next((c for c in results if (c.get("name") or "").lower() == query.lower()), None)
-        if exact:
-            await self._send_ptcg_detail(event, exact["id"])
             return
         self.ptcg_searcher.search_sessions[user_id] = {"results": results, "query": query}
         await event.send(event.plain_result(self.ptcg_searcher.format_search_page(result)))
@@ -1059,22 +1055,25 @@ class TCGGalateaPlugin(Star):
     async def ptcg_random(self, event: AstrMessageEvent):
         if not self.ptcg_on:
             return await self._deny_module(event, "PTCG")
-        pool = list(POKEMON_CN_MAP.keys())
+        # 用高可用常见名，保证有稳定卡图
+        pool = [
+            "Pikachu", "Charizard", "Eevee", "Mewtwo", "Gengar",
+            "Gyarados", "Snorlax", "Lucario", "Greninja", "Dragonite",
+            "Bulbasaur", "Squirtle", "Umbreon", "Rayquaza", "Arceus",
+        ]
         random.shuffle(pool)
-        for name in pool[:8]:
+        for name in pool:
             try:
                 result = await self.ptcg_searcher.search(name, page=1)
-                if "error" in result or not result.get("all_results"):
+                results = result.get("all_results") or []
+                if "error" in result or not results:
                     continue
-                pick = result["all_results"][0]
-                for c in result["all_results"]:
-                    if c.get("name") == name:
-                        pick = c
-                        break
-                detail = await self.ptcg_searcher.get_detail(pick["id"])
-                if "error" not in detail:
-                    await self._send_ptcg_detail(event, pick["id"])
-                    return
+                pick = next(
+                    (c for c in results if (c.get("name") or "") == name),
+                    results[0],
+                )
+                await self._send_ptcg_detail(event, pick["id"])
+                return
             except Exception as e:
                 logger.warning(f"PTCG随机 {name}: {e}")
                 continue
@@ -1104,7 +1103,7 @@ class TCGGalateaPlugin(Star):
         md = "✅" if self.md_on else "❌"
         dl = "✅" if self.dl_on else "❌"
         pt = "✅" if self.ptcg_on else "❌"
-        text = f"""TCG工具箱 v2.4.2
+        text = f"""TCG工具箱 v2.4.3
 ================================
 全局
 • TCG帮助  TCG状态
