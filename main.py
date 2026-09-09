@@ -225,7 +225,7 @@ class YugiohCardSearcher:
             type_tag = type_map.get(card_type, "")
             output.append("{}. {} {}".format(i, name, type_tag))
         output.append(
-            "\n💡 请输入 /查卡序号 [序号] 查看详细信息，或使用 /查卡换页 [页码] 切换页面"
+            "\n💡 /OCG序号 <序号> 查看详情 · /OCG换页 <页码> 切换"
         )
         return "\n".join(output)
     
@@ -301,7 +301,7 @@ class YugiohCardSearcher:
         return text.strip()
 
 
-@register("tcg_galatea", "Noctfom", "TCG多游戏工具箱(OCG/MD/DL/PTCG)", "2.0.0")
+@register("tcg_galatea", "Noctfom, Eason4869", "TCG工具箱", "2.1.0")
 class TCGGalateaPlugin(Star):
     def __init__(self, context=None, config: AstrBotConfig = None):
         super().__init__(context, config)
@@ -539,1054 +539,427 @@ class TCGGalateaPlugin(Star):
         chain.append(Comp.Plain(formatted_detail))
         await event.send(event.chain_result(chain))
 
-    # ... (Command handlers start here) ...
 
-    @filter.command("查卡", alias={"/查卡"})
-    async def handle_cha_ka(self, event: AstrMessageEvent):
+    # ================= 统一指令层：/模块 + 动词 =================
+
+    def _get_uid(self, event: AstrMessageEvent):
+        uid = getattr(event.message_obj, "sender_id", None)
+        if not uid and hasattr(event.message_obj, "sender"):
+            uid = getattr(event.message_obj.sender, "user_id", None)
+        return uid if uid is not None else "unknown"
+
+    # ---------- OCG 查卡 ----------
+
+    @filter.command("OCG查卡", alias=["/OCG查卡", "/查卡"])
+    async def handle_ocg_search(self, event: AstrMessageEvent):
         if not self.ocg_on:
             return await self._deny_module(event, "OCG")
-        message_text = event.get_message_str().strip()
-        user_id = getattr(event.message_obj, "sender_id", "unknown")
-        parts = message_text.split() if message_text else []
-
+        user_id = self._get_uid(event)
+        parts = event.get_message_str().strip().split()
         if len(parts) <= 1:
-            await event.send(event.plain_result("请输入要查询的卡片名称，例如: /查卡 青眼白龙"))
+            await event.send(event.plain_result("用法: /OCG查卡 <卡名>\n例如: /OCG查卡 青眼白龙"))
             return
-
         query = " ".join(parts[1:])
         result = await self.card_searcher.search_card(query)
-
         if "error" in result:
             await event.send(event.plain_result(f"❌ 搜索出错: {result['error']}"))
-        elif "result" in result and result["result"]:
-            results = result["result"]
-            
-            # === 修改点：单结果直接显示 ===
-            if len(results) == 1:
-                # 只有一张卡，直接发送详情并缓存
-                card = results[0]
-                await self._send_card_detail(event, card["id"], card.get("cn_name", query))
-                return
-            # ==========================
+            return
+        results = result.get("result") or []
+        if not results:
+            await event.send(event.plain_result(f"⚠️ 未找到与「{query}」相关的卡片"))
+            return
+        if len(results) == 1:
+            await self._send_card_detail(event, results[0]["id"], results[0].get("cn_name", query))
+            return
+        self.search_sessions[user_id] = {"results": results, "current_page": 1}
+        await event.send(
+            event.plain_result(self.card_searcher.format_search_results(results, 1, user_id))
+        )
 
-            self.search_sessions[user_id] = {
-                "results": results,
-                "current_page": 1,
-                "page_size": 10,
-                "query": query,
-            }
-            response_text = self.card_searcher.format_search_results(results, 1, user_id)
-            await event.send(event.plain_result(response_text))
-        else:
-            await event.send(event.plain_result("⚠️ 未找到与'{}'相关的卡片".format(query)))
-
-    @filter.command("查卡换页", alias={"/查卡换页"})
-    async def handle_change_page(self, event: AstrMessageEvent):
-        """切换到对应查卡页码"""
+    @filter.command("OCG序号", alias=["/OCG序号", "/查卡序号"])
+    async def handle_ocg_select(self, event: AstrMessageEvent):
         if not self.ocg_on:
             return await self._deny_module(event, "OCG")
-        message_text = event.get_message_str().strip()
-        user_id = getattr(event.message_obj, "sender_id", "unknown")
-        parts = message_text.split()
-
-        page_str = parts[1] if len(parts) > 1 else ""
-        if not page_str.isdigit():
-            await event.send(event.plain_result("请输入有效的页码"))
+        user_id = self._get_uid(event)
+        parts = event.get_message_str().strip().split()
+        if len(parts) < 2 or not parts[1].isdigit():
+            await event.send(event.plain_result("用法: /OCG序号 <序号>"))
             return
-
-        page = int(page_str)
         if user_id not in self.search_sessions:
-            await event.send(event.plain_result("没有正在进行的搜索会话"))
+            await event.send(event.plain_result("请先 /OCG查卡 搜索"))
             return
-
-        session = self.search_sessions[user_id]
-        results = session["results"]
-        response_text = self.card_searcher.format_search_results(results, page, user_id)
-        await event.send(event.plain_result(response_text))
-
-    @filter.command("查卡序号", alias={"/查卡序号"})
-    async def handle_select_card(self, event: AstrMessageEvent):
-        """查询对应序号卡片"""
-        if not self.ocg_on:
-            return await self._deny_module(event, "OCG")
-        message_text = event.get_message_str().strip()
-        user_id = getattr(event.message_obj, "sender_id", "unknown")
-        parts = message_text.split()
-
-        card_number_str = parts[1] if len(parts) > 1 else ""
-        if not card_number_str.isdigit():
-            await event.send(event.plain_result("请输入卡片序号"))
-            return
-
-        card_number = int(card_number_str)
-        if user_id not in self.search_sessions:
-            await event.send(event.plain_result("请先搜索卡片"))
-            return
-
-        session = self.search_sessions[user_id]
-        results = session["results"]
-
-        if 1 <= card_number <= len(results):
-            selected_card = results[card_number - 1]
-            
-            # 这里会自动处理详情查询、G点显示、图片下载和缓存更新
-            await self._send_card_detail(event, selected_card["id"], selected_card.get("cn_name"))
-            
+        num = int(parts[1])
+        results = self.search_sessions[user_id]["results"]
+        if 1 <= num <= len(results):
+            await self._send_card_detail(event, results[num - 1]["id"], results[num - 1].get("cn_name"))
         else:
             await event.send(event.plain_result("序号超出范围"))
 
-    @filter.command("发送高清卡图", alias={"/发送高清卡图"})
-    async def handle_send_image(self, event: AstrMessageEvent):
-        """发送上一次查询的卡片大图，或直接输入卡密查询"""
+    @filter.command("OCG换页", alias=["/OCG换页", "/查卡换页"])
+    async def handle_ocg_page(self, event: AstrMessageEvent):
         if not self.ocg_on:
             return await self._deny_module(event, "OCG")
-        user_id = getattr(event.message_obj, "sender_id", "unknown")
+        user_id = self._get_uid(event)
         parts = event.get_message_str().strip().split()
-        card_id_str = parts[1] if len(parts) > 1 else ""
+        if len(parts) < 2 or not parts[1].isdigit():
+            await event.send(event.plain_result("用法: /OCG换页 <页码>"))
+            return
+        if user_id not in self.search_sessions:
+            await event.send(event.plain_result("没有进行中的搜索"))
+            return
+        results = self.search_sessions[user_id]["results"]
+        await event.send(
+            event.plain_result(self.card_searcher.format_search_results(results, int(parts[1]), user_id))
+        )
 
-        if card_id_str:
-            if not card_id_str.isdigit():
+    @filter.command("OCG卡图", alias=["/OCG卡图", "/发送高清卡图"])
+    async def handle_ocg_image(self, event: AstrMessageEvent):
+        if not self.ocg_on:
+            return await self._deny_module(event, "OCG")
+        user_id = self._get_uid(event)
+        parts = event.get_message_str().strip().split()
+        if len(parts) > 1:
+            if not parts[1].isdigit():
                 await event.send(event.plain_result("卡片密码必须是数字"))
                 return
-            card_id = card_id_str
+            card_id = parts[1]
         elif user_id in self.last_viewed_cards:
             card_id = self.last_viewed_cards[user_id]["card_id"]
         else:
-            await event.send(event.plain_result("请先查看卡片详情"))
+            await event.send(event.plain_result("请先 /OCG查卡，或 /OCG卡图 <密码>"))
             return
-
-        image_url = "https://cdn.233.momobako.com/ygopro/pics/{}.jpg".format(card_id)
+        url = f"https://cdn.233.momobako.com/ygopro/pics/{card_id}.jpg"
         try:
-            await event.send(event.image_result(image_url))
-        except:
-            await event.send(event.plain_result(image_url))
-    
-    # ================= 网页解析扩展功能 =================
+            await event.send(event.image_result(url))
+        except Exception:
+            await event.send(event.plain_result(url))
 
-    @filter.command("查询卡盒", alias=["/查询卡盒", "查卡盒", "/查卡盒"])
-    async def handle_query_packs(self, event: AstrMessageEvent):
-        """查询当前卡片的收录卡盒信息"""
-        if not self.ocg_on:
-            return await self._deny_module(event, "OCG")
-        user_id = getattr(event.message_obj, "sender_id", "unknown")
-        
-        # 1. 检查是否有缓存的卡片
-        if user_id not in self.last_viewed_cards:
-            await event.send(event.plain_result("⚠️ 请先使用 /查卡 或 /查卡序号 查看一张卡片。"))
-            return
-            
-        card_info = self.last_viewed_cards[user_id]
-        card_id = card_info["card_id"]
-        card_name = card_info["card_name"]
-        
-        await event.send(event.plain_result(f"🔍 正在查询【{card_name}】的收录信息..."))
-        
-        # 2. 获取 HTML 并解析
-        html_text = await self.card_searcher.get_card_html(card_id)
-        packs = self.card_searcher.parse_card_packs(html_text)
-        
-        if not packs:
-            await event.send(event.plain_result(f"📦【{card_name}】暂无卡盒收录信息或解析失败。"))
-            return
-            
-        # 3. 构建回复 (如果太长则截断)
-        msg_lines = [f"📦【{card_name}】收录详情 ({len(packs)}条):"]
-        
-        # 只显示前 15 条，防止刷屏
-        display_packs = packs[:15]
-        for p in display_packs:
-            msg_lines.append(p)
-            
-        if len(packs) > 15:
-            msg_lines.append(f"...以及其他 {len(packs)-15} 个卡盒")
-            
-        await event.send(event.plain_result("\n".join(msg_lines)))
-
-    @filter.command("查询裁定", alias=["/查询裁定", "查裁定", "/查裁定", "/查询FAQ", "查询FAQ", "/查FAQ", "查FAQ"])
-    async def handle_query_rulings(self, event: AstrMessageEvent):
-        """查询当前卡片的官方裁定(Q&A)"""
-        if not self.ocg_on:
-            return await self._deny_module(event, "OCG")
-        user_id = getattr(event.message_obj, "sender_id", "unknown")
-        
-        # 1. 检查缓存
-        if user_id not in self.last_viewed_cards:
-            await event.send(event.plain_result("⚠️ 请先使用 /查卡 或 /查卡序号 查看一张卡片。"))
-            return
-            
-        card_info = self.last_viewed_cards[user_id]
-        card_id = card_info["card_id"]
-        card_name = card_info["card_name"]
-        
-        await event.send(event.plain_result(f"🔍 正在查询【{card_name}】的官方裁定..."))
-        
-        # 2. 获取 HTML 并解析
-        html_text = await self.card_searcher.get_card_html(card_id)
-        faqs = self.card_searcher.parse_card_faq(html_text)
-        
-        if not faqs:
-            await event.send(event.plain_result(f"⚖️【{card_name}】暂无收录的官方裁定(Q&A)。"))
-            return
-            
-        # 3. 发送 (由于裁定字数很多，建议合并转发或分条发送，这里暂时合并发送文本)
-        # 如果条数太多，我们只发前 3 条，或者提示去网页看
-        
-        chain = [Comp.Plain(f"⚖️【{card_name}】裁定 Q&A ({len(faqs)}条):\n")]
-        
-        # 限制显示前 3 条，以免消息过长发不出去
-        limit = 3
-        for i, qa in enumerate(faqs[:limit]):
-            chain.append(Comp.Plain(f"\nQ{i+1}: {qa['title']}\n"))
-            chain.append(Comp.Plain(f"问: {qa['q']}\n"))
-            chain.append(Comp.Plain(f"答: {qa['a']}\n"))
-            chain.append(Comp.Plain("-" * 20))
-            
-        if len(faqs) > limit:
-            chain.append(Comp.Plain(f"\n...剩余 {len(faqs)-limit} 条裁定请访问网页查看: https://ygocdb.com/card/{card_id}"))
-            
-        await event.send(event.chain_result(chain))
-
-    @filter.command("随机一卡", alias={"/随机一卡"})
-    async def handle_random_card(self, event: AstrMessageEvent):
-        """多罗！！！"""
+    @filter.command("OCG随机", alias=["/OCG随机", "/随机一卡"])
+    async def handle_ocg_random(self, event: AstrMessageEvent):
         if not self.ocg_on:
             return await self._deny_module(event, "OCG")
         if not self.all_card_ids:
             await event.send(event.plain_result("卡片数据库未加载"))
             return
-
-        # 重试逻辑
         for _ in range(3):
             try:
-                random_card_id = random.choice(self.all_card_ids)
-                detail_result = await self.card_searcher.get_card_detail(
-                    str(random_card_id)
-                )
-
-                if "error" not in detail_result and "data" in detail_result:
-                    formatted_detail = self.card_searcher.format_card_info(
-                        detail_result
-                    )
-                    thumbnail_url = f"https://cdn.233.momobako.com/ygopro/pics/{random_card_id}.jpg!half"
-
-                    message_chain = [
-                        Comp.Image.fromURL(thumbnail_url),
-                        Comp.Plain("\n" + formatted_detail),
-                    ]
-                    await event.send(event.chain_result(message_chain))
-
-                    user_id = getattr(event.message_obj, "sender_id", "unknown")
-                    self.last_viewed_cards[user_id] = {
-                        "card_id": str(random_card_id),
-                        "card_name": detail_result.get("cn_name", "未知"),
-                        "card_data": detail_result,
-                    }
-                    return  # 成功则退出
+                cid = random.choice(self.all_card_ids)
+                detail = await self.card_searcher.get_card_detail(str(cid))
+                if "error" not in detail and "data" in detail:
+                    await self._send_card_detail(event, cid, detail.get("cn_name", "未知"))
+                    return
             except Exception as e:
-                logger.error(f"随机抽取异常: {e}")
-                continue
-
+                logger.error(f"OCG随机异常: {e}")
         await event.send(event.plain_result("抽取失败，请稍后再试"))
 
-    @filter.command("发动王牌圣杯", alias={"/发动王牌圣杯"})
-    async def handle_holy_grail(self, event: AstrMessageEvent):
-        """扔硬币！！"""
+    # ---------- OCG 环境 ----------
+
+    @filter.command("OCG饼图", alias=["/OCG饼图", "/OCG饼图更新", "OCG饼图更新"])
+    async def handle_ocg_pie(self, event: AstrMessageEvent):
+        """带「更新」则抓取，否则发送本地饼图。"""
         if not self.ocg_on:
             return await self._deny_module(event, "OCG")
-        is_positive = random.choice([True, False])
-        if is_positive:
-            card_id = "55144522"
-            message_text = "是正面！抽2张卡！"
-        else:
-            card_id = "5915629"
-            message_text = "是反面......对方抽2张卡。"
-
-        thumbnail_url = f"https://cdn.233.momobako.com/ygopro/pics/{card_id}.jpg!half"
-        message_chain = [
-            Comp.Image.fromURL(thumbnail_url),
-            Comp.Plain("\n" + message_text),
-        ]
-        await event.send(event.chain_result(message_chain))
-
-    # ================= T表/卡组/OCG 相关指令 =================
-
-    @filter.command("DL更新T表", alias=["/DL更新T表"])
-    async def handle_dl_update_tier(self, event: AstrMessageEvent):
-        """更新本地的DLT表数据"""
-        if not self.dl_on:
-            return await self._deny_module(event, "DL")
-        await self.tier_handler.update_tier_list(
-            event, GameType.DUEL_LINKS, "Duel Links"
-        )
-
-    @filter.command("DL查询T表", alias=["/DL查询T表"])
-    async def handle_dl_query_tier(self, event: AstrMessageEvent):
-        """查询本地的DLT表数据"""
-        if not self.dl_on:
-            return await self._deny_module(event, "DL")
-        await self.tier_handler.query_tier_list(
-            event, GameType.DUEL_LINKS, "Duel Links"
-        )
-
-    @filter.command("MD更新T表", alias=["/MD更新T表"])
-    async def handle_md_update_tier(self, event: AstrMessageEvent):
-        """更新本地的MDT表数据"""
-        if not self.md_on:
-            return await self._deny_module(event, "MD")
-        await self.tier_handler.update_tier_list(
-            event, GameType.MASTER_DUEL, "Master Duel"
-        )
-
-    @filter.command("MD查询T表", alias=["/MD查询T表"])
-    async def handle_md_query_tier(self, event: AstrMessageEvent):
-        """查询本地的MDT表数据"""
-        if not self.md_on:
-            return await self._deny_module(event, "MD")
-        await self.tier_handler.query_tier_list(
-            event, GameType.MASTER_DUEL, "Master Duel"
-        )
-
-    @filter.command("翻译T表", alias=["/翻译T表"])
-    async def handle_translate_tier(self, event: AstrMessageEvent):
-        """尝试翻译当前T表中未翻译的卡组"""
-        if not self._tier_any_on():
-            return await self._deny_module(event, "MD/DL")
-        message_text = event.get_message_str().strip()
-        parts = message_text.split()
-
-        game_type = GameType.DUEL_LINKS
-        if len(parts) < 2:
-            await event.send(
-                event.plain_result(
-                    "请输入你要翻译的T表种类！如/翻译T表 DL 或 /翻译T表 MD"
-                )
-            )
-        elif "dl" in parts[1].lower() or "DL" in parts[1].lower():
-            await self.tier_handler.translate_tier_list(event, game_type)
-        elif "md" in parts[1].lower() or "MD" in parts[1].lower():
-            game_type = GameType.MASTER_DUEL
-            await self.tier_handler.translate_tier_list(event, game_type)
-        else:
-            await event.send(event.plain_result("输入错误!"))
-
-    @filter.command("MD查卡组", alias=["/MD查卡组", "/MD查询卡组", "MD查询卡组"])
-    async def handle_md_deck_breakdown(self, event: AstrMessageEvent):
-        """查询MD卡组配置与图片"""
-        if not self.md_on:
-            return await self._deny_module(event, "MD")
-        message_text = event.get_message_str().strip()
-        parts = message_text.split(maxsplit=1)
-
-        if len(parts) < 2:
-            await event.send(
-                event.plain_result(
-                    "请输入卡组名称，例如: /MD查卡组 Maliss\n(可以使用 /MD查询T表 查看推荐卡组名)"
-                )
-            )
+        msg = event.get_message_str().strip()
+        want_update = "更新" in msg
+        if want_update:
+            await event.send(event.plain_result("🔍 正在连接 RotK 抓取数据..."))
+            try:
+                result = await self.rotk_manager.fetch_latest_report()
+                if not result or "error" in result:
+                    err = result.get("error", "Unknown") if result else "Empty"
+                    await event.send(event.plain_result(f"⚠️ 更新失败: {err}"))
+                    return
+                if self.rotk_manager.save_local_data(result):
+                    await event.send(event.plain_result(f"✅ 更新完毕: {result['title']}"))
+                else:
+                    await event.send(event.plain_result("⚠️ 保存失败"))
+            except Exception as e:
+                logger.error(f"OCG饼图更新出错: {e}")
+                await event.send(event.plain_result(f"⚠️ 内部错误: {e}"))
             return
-
-        raw_name = parts[1]
-
-        # === 修改开始: 先尝试进行翻译转换 ===
-        deck_name = self._resolve_deck_name(raw_name)
-
-        # 如果名字发生了变化(找到了翻译)，提示一下用户
-        if deck_name != raw_name:
-            await event.send(
-                event.plain_result(
-                    f"🔍 识别到中文卡组名【{raw_name}】，自动转换为【{deck_name}】进行查询..."
-                )
-            )
-        else:
-            await event.send(
-                event.plain_result(
-                    f"🔍 [MDM] 正在抓取【{deck_name}】数据并生成构筑图，请稍候..."
-                )
-            )
-        # === 修改结束 ===
-
-        session_id = self._get_session_id(event)  # <--- 获取 ID
-
-        try:
-            # 传入 session_id
-            result = await self.deck_breakdown.fetch_deck_breakdown(
-                deck_name, GameType.MASTER_DUEL, session_id
-            )
-
-            text_msg = result.get("text", "无数据")
-            image_path = result.get("image_path")
-
-            chain = []
-            # 有图先发图
-            if image_path and os.path.exists(image_path):
-                chain.append(Comp.Image.fromFileSystem(image_path))
-
-            # 再发文字
-            chain.append(Comp.Plain(text_msg))
-
-            await event.send(event.chain_result(chain))
-
-        except Exception as e:
-            # 建议这里把 e 打印出来，方便调试
-            logger.error(f"查询出错: {e}")
-            await event.send(event.plain_result("查询过程中发生内部错误。"))
-
-    @filter.command("DL查卡组", alias=["/DL查卡组", "/DL查询卡组", "DL查询卡组"])
-    async def handle_dl_deck_breakdown(self, event: AstrMessageEvent):
-        """查询DL卡组配置与图片"""
-        if not self.dl_on:
-            return await self._deny_module(event, "DL")
-        message_text = event.get_message_str().strip()
-        parts = message_text.split(maxsplit=1)
-
-        if len(parts) < 2:
-            await event.send(
-                event.plain_result("请输入卡组名称，例如: /DL查卡组 Blue-Eyes")
-            )
-            return
-
-        raw_name = parts[1]
-
-        deck_name = self._resolve_deck_name(raw_name)
-
-        if deck_name != raw_name:
-            await event.send(
-                event.plain_result(
-                    f"🔍 识别到中文卡组名【{raw_name}】，自动转换为【{deck_name}】进行查询..."
-                )
-            )
-        else:
-            await event.send(
-                event.plain_result(
-                    f"🔍 [DLM] 正在抓取【{deck_name}】数据并生成构筑图，请稍候..."
-                )
-            )
-
-        session_id = self._get_session_id(event)  # <--- 获取 ID
-
-        try:
-            # 传入 session_id
-            result = await self.deck_breakdown.fetch_deck_breakdown(
-                deck_name, GameType.DUEL_LINKS, session_id
-            )
-            text_msg = result.get("text", "无数据")
-            image_path = result.get("image_path")
-
-            chain = []
-            if image_path and os.path.exists(image_path):
-                chain.append(Comp.Image.fromFileSystem(image_path))
-
-            chain.append(Comp.Plain(text_msg))
-
-            await event.send(event.chain_result(chain))
-
-        except Exception as e:
-            logger.error(f"查询出错: {e}")
-            await event.send(event.plain_result("查询过程中发生内部错误。"))
-
-    @filter.command("OCG饼图更新", alias=["/OCG饼图更新"])
-    async def handle_ocg_update(self, event: AstrMessageEvent):
-        """爬取ROTK获取最新饼图"""
-        if not self.ocg_on:
-            return await self._deny_module(event, "OCG")
-        await event.send(event.plain_result("🔍 正在连接 RotK 抓取数据..."))
-        try:
-            result = await self.rotk_manager.fetch_latest_report()
-            if result is None or "error" in result:
-                err = result.get("error", "Unknown") if result else "Empty"
-                await event.send(event.plain_result(f"⚠️ 更新失败: {err}"))
-                return
-
-            if self.rotk_manager.save_local_data(result):
-                msg = f"✅ 更新完毕! 标题: {result['title']}"
-                await event.send(event.plain_result(msg))
-            else:
-                await event.send(event.plain_result("⚠️ 保存失败"))
-        except Exception as e:
-            logger.error(f"OCG更新出错: {e}")
-            await event.send(event.plain_result(f"⚠️ 内部错误: {e}"))
-
-    @filter.command("OCG饼图", alias=["/OCG饼图", "/OCG饼图查询", "OCG饼图查询"])
-    async def handle_ocg_query(self, event: AstrMessageEvent):
-        """发送本地的OCG饼图数据"""
-        if not self.ocg_on:
-            return await self._deny_module(event, "OCG")
         data = self.rotk_manager.load_local_data()
         if not data:
-            await event.send(event.plain_result("⚠️ 本地无数据，请先 /OCG饼图更新"))
+            await event.send(event.plain_result("⚠️ 本地无数据，请先发送 /OCG饼图更新"))
             return
-
         chain = []
-        local_paths = data.get("local_paths", [])
-        for path in local_paths[:9]:
-            if os.path.exists(path):
-                chain.append(Comp.Image.fromFileSystem(path))
-
-        text = f"📊 {data['title']}\n📅 {data['date']}"
-        chain.append(Comp.Plain(text))
+        for p in data.get("local_paths", [])[:9]:
+            if os.path.exists(p):
+                chain.append(Comp.Image.fromFileSystem(p))
+        chain.append(Comp.Plain(f"📊 {data.get('title','')}\\n📅 {data.get('date','')}"))
         await event.send(event.chain_result(chain))
 
-    @filter.command("查询卡组翻译", alias=["/查询卡组翻译"])
-    async def handle_query_translation(self, event: AstrMessageEvent):
-        """查询已有的卡组翻译(英文)"""
-        if not self._tier_any_on():
-            return await self._deny_module(event, "MD/DL")
-        parts = event.get_message_str().strip().split(maxsplit=1)
-        if len(parts) < 2:
-            await event.send(event.plain_result("请输入名称"))
-            return
-        query = parts[1]
-        en, cn = self.tier_handler.manager.get_specific_translation(query)
-        if en:
-            await event.send(event.plain_result(f"🇺🇸 {en}\n🇨🇳 {cn}"))
-        else:
-            await event.send(event.plain_result("未找到记录"))
-
-    @filter.command("修改卡组翻译", alias=["/修改卡组翻译"])
-    async def handle_edit_translation(self, event: AstrMessageEvent):
-        """手动添加/修改卡组翻译"""
-        if not self._tier_any_on():
-            return await self._deny_module(event, "MD/DL")
-        parts = event.get_message_str().strip().split()
-        if len(parts) < 3:
-            await event.send(event.plain_result("用法: /修改卡组翻译 [英文] [中文]"))
-            return
-        cn_name = parts[-1]
-        en_name = " ".join(parts[1:-1])
-        if self.tier_handler.manager.set_manual_translation(en_name, cn_name):
-            await event.send(event.plain_result(f"✅ 已更新: {en_name} -> {cn_name}"))
-        else:
-            await event.send(event.plain_result("保存失败"))
-
-    @filter.command("发送ydk", alias=["/发送ydk", "发送ydk文件", "/发送ydk文件"])
-    async def handle_send_ydk(self, event: AstrMessageEvent):
-        """发送用户缓存的ydk文件"""
+    @filter.command("OCG禁卡表", alias=["/OCG禁卡表", "/禁卡表更新", "/OCG禁卡表更新"])
+    async def handle_ocg_banlist(self, event: AstrMessageEvent):
         if not self.ocg_on:
             return await self._deny_module(event, "OCG")
-        session_id = self._get_session_id(event)
-        # 动态拼接路径
-        path = os.path.join(self.ydk_manager.cache_dir, f"deck_{session_id}.ydk")
-        path = os.path.abspath(path)
-
-        if os.path.exists(path):
-            file_name = f"{session_id}.ydk"  # 或者保留 deck_xxx.ydk
-            await event.send(
-                event.chain_result([Comp.File(name=os.path.basename(path), file=path)])
-            )
-        else:
-            await event.send(event.plain_result("⚠️ 当前会话没有缓存的卡组文件。"))
-
-    @filter.command("发送卡组图片", alias=["/发送卡组图片"])
-    async def handle_send_deck_image(self, event: AstrMessageEvent):
-        """发送用户缓存的ydk文件的卡组构筑图片"""
-        if not self.ocg_on:
-            return await self._deny_module(event, "OCG")
-        session_id = self._get_session_id(event)
-        # 检查文件是否存在
-        ydk_path = os.path.join(self.ydk_manager.cache_dir, f"deck_{session_id}.ydk")
-
-        if not os.path.exists(ydk_path):
-            await event.send(event.plain_result("⚠️ 当前会话无缓存数据"))
-            return
-
-        await event.send(event.plain_result("🎨 正在生成图片..."))
-        # 传入 session_id
-        img_path = await self.ydk_manager.draw_deck_image(session_id, "Cached Deck")
-
-        if img_path:
-            await event.send(event.image_result(img_path))
-
-    @filter.command("接收ydk文本", alias=["/接收ydk文本"])
-    async def handle_receive_ydk(self, event: AstrMessageEvent):
-        """接收 YDK 文本并更新缓存"""
-        if not self.ocg_on:
-            return await self._deny_module(event, "OCG")
-        session_id = self._get_session_id(event)
-        text = event.get_message_str().strip()
-        # 去掉指令部分
-        parts = text.split("\n", 1)
-        if len(parts) < 2:
-            await event.send(event.plain_result("请在指令换行后粘贴 YDK 内容"))
-            return
-
-        ydk_content = parts[1]
-        main, extra, side = self.ydk_manager.parse_ydk(ydk_content)
-
-        if not main and not extra:
-            await event.send(event.plain_result("⚠️ 未识别到有效的卡密内容"))
-            return
-
-        path = self.ydk_manager.save_ydk(main, extra, side, session_id)
-        await event.send(
-            event.plain_result(
-                f" YDK 已接收 (M:{len(main)} E:{len(extra)} S:{len(side)})。你可以使用 /发送卡组图片 查看。"
-            )
-        )
-
-    @filter.command(
-        "接收卡组链接", alias=["/接收卡组链接", "解析卡组链接", "/解析卡组链接"]
-    )
-    async def handle_receive_deck_link(self, event: AstrMessageEvent):
-        """解析 ourocg/ygo 卡组链接 或 YDKe 代码并转化为ydk文件缓存"""
-        if not self.ocg_on:
-            return await self._deny_module(event, "OCG")
-        session_id = self._get_session_id(event)
-        text = event.get_message_str().strip()
-        parts = text.split()
-        url = parts[1] if len(parts) > 1 else text  # 兼容两种输入方式
-
-        main, extra, side = [], [], []
-        source_type = ""
-
-        await event.send(event.plain_result("🔍 正在解析链接..."))
-
-        # === 分流逻辑 ===
-        if url.startswith("ydke://"):
-            # 处理 YDKe
-            source_type = "YDKe"
-            main, extra, side = self.ydk_manager.parse_ydke_url(url)
-        elif "deck.ourygo.top" in url and "d=" in url:
-            # 处理 Ourocg
-            source_type = "Ourocg"
-            try:
-                main, extra, side = self.ydk_manager.parse_ourocg_url(url)
-            except Exception as e:
-                await event.send(event.plain_result(f"❌ 解析出错: {e}"))
-                return
-        else:
-            await event.send(
-                event.plain_result(
-                    "⚠️ 未知链接格式。支持：\n1. deck.ourygo.top 分享链接\n2. ydke:// 代码"
-                )
-            )
-            return
-
-        # === 结果处理 ===
-        if not main and not extra:
-            await event.send(event.plain_result("❌ 解析结果为空，请检查链接是否有效"))
-            return
-
-        # 2. 保存 YDK
-        ydk_path = self.ydk_manager.save_ydk(main, extra, side, session_id)
-
-        # 3. 生成图片
-        await event.send(
-            event.plain_result(
-                f"✅ [{source_type}] 解析成功 (M:{len(main)} E:{len(extra)} S:{len(side)})\n🎨 正在绘图..."
-            )
-        )
-        img_path = await self.ydk_manager.draw_deck_image(
-            session_id, f"Shared {source_type}"
-        )
-
-        if img_path:
-            await event.send(event.image_result(img_path))
-        else:
-            await event.send(
-                event.plain_result(
-                    "⚠️ 图片生成失败，但 YDK 已保存。可以使用 /发送ydk 获取。"
-                )
-            )
-
-    # ================= 决斗模拟器指令 (v1.4.0) =================
-
-    @filter.command("卡组转存", alias=["/卡组转存"])
-    async def handle_deck_transfer(self, event: AstrMessageEvent):
-        """将当前群聊的 YDK 存入用户的私有仓库"""
-        if not self.ocg_on:
-            return await self._deny_module(event, "OCG")
-        # 1. 获取群组ID和用户ID
-        group_id = getattr(event.message_obj, "group_id", None)
-        sender_id = getattr(event.message_obj, "sender_id", None)
-        # 兼容性处理
-        if not sender_id and hasattr(event.message_obj, "sender"):
-             sender_id = getattr(event.message_obj.sender, "user_id", None)
-
-        if not group_id:
-            await event.send(event.plain_result("⚠️ 请在群聊中使用此指令，用于将群内讨论的卡组保存为您的私有卡组。"))
-            return
-        if not sender_id:
-            await event.send(event.plain_result("❌ 无法获取您的用户 ID。"))
-            return
-
-        src_session = f"group_{group_id}"
-        target_session = f"user_{sender_id}"
-        
-        if self.ydk_manager.copy_ydk_from_session(src_session, target_session):
-            await event.send(event.plain_result(f"✅ 卡组已转存至您的私人空间！\n您现在可以在任何地方使用 /卡组起手 来练习这套卡组。"))
-        else:
-            await event.send(event.plain_result(f"⚠️ 当前群聊没有缓存的卡组文件。请先使用 /MD查卡组 或 /接收ydk文本。"))
-
-    @filter.command("卡组分享", alias=["/卡组分享", "/分享卡组", "分享卡组"])
-    async def handle_deck_share(self, event: AstrMessageEvent):
-        """将私人卡组分享到当前群聊"""
-        if not self.ocg_on:
-            return await self._deny_module(event, "OCG")
-        group_id = getattr(event.message_obj, "group_id", None)
-        sender_id = getattr(event.message_obj, "sender_id", None)
-        if not sender_id and hasattr(event.message_obj, "sender"):
-             sender_id = getattr(event.message_obj.sender, "user_id", None)
-
-        if not group_id:
-            await event.send(event.plain_result("⚠️ 此指令仅限群聊使用。"))
-            return
-
-        user_session = f"user_{sender_id}"
-        group_session = f"group_{group_id}"
-        
-        # 检查自己有没有卡组
-        user_ydk_path = os.path.join(self.ydk_manager.cache_dir, f"deck_{user_session}.ydk")
-        if not os.path.exists(user_ydk_path):
-            await event.send(event.plain_result("⚠️ 您的私人仓库为空，无法分享。请先导入一套卡组。"))
-            return
-
-        # 执行复制: 私 -> 群
-        if self.ydk_manager.copy_ydk_from_session(user_session, group_session):
-            await event.send(event.plain_result("✅ 已将您的私人卡组分享到当前群聊！\n群友们可以直接使用 /卡组起手 体验这套卡组了。"))
-        else:
-            await event.send(event.plain_result("❌ 分享失败。"))
-
-    @filter.command("卡组起手", alias=["/卡组起手"])
-    async def handle_sim_start(self, event: AstrMessageEvent):
-        """
-        初始化决斗模拟：
-        优先使用私人卡组，如果私人为空且在群聊中，自动获取群卡组。
-        """
-        if not self.ocg_on:
-            return await self._deny_module(event, "OCG")
-        # 1. 获取 User Key
-        sender_id = getattr(event.message_obj, "sender_id", None)
-        if not sender_id and hasattr(event.message_obj, "sender"):
-             sender_id = getattr(event.message_obj.sender, "user_id", None)
-        if not sender_id:
-             await event.send(event.plain_result("❌ 无法获取用户身份。"))
-             return
-        user_key = str(sender_id)
-        user_session = f"user_{sender_id}"
-
-        # 2. 尝试读取私人 YDK
-        main, _, _ = self.ydk_manager.load_last_ydk(user_session)
-        
-        # 3. 如果私人没卡组，尝试自动从群聊获取
-        if not main:
-            group_id = getattr(event.message_obj, "group_id", None)
-            if group_id:
-                group_session = f"group_{group_id}"
-                # 尝试复制 群 -> 私
-                if self.ydk_manager.copy_ydk_from_session(group_session, user_session):
-                    # 复制成功后，重新读取私人 YDK
-                    main, _, _ = self.ydk_manager.load_last_ydk(user_session)
-                    await event.send(event.plain_result("💡 检测到您没有私人卡组，已自动载入当前群聊卡组。"))
-        
-        # 4. 还是没有（私没有，且群也没有/不在群）
-        if not main:
-            await event.send(event.plain_result(f"⚠️ 无法启动决斗。\n请先导入卡组（私聊发送YDK），或者等待群友分享卡组。"))
-            return
-            
-        # 5. 初始化并抽卡
-        self.duel_sim.init_duel(user_key, main)
-        hand = self.duel_sim.draw_card(user_key, 5)
-        
-        # 6. 绘图与发送
-        img_path = await self.ydk_manager.draw_cards_image(hand, f"Starting Hand ({len(hand)})")
-        
-        chain = [Comp.Plain(f"🎲 决斗开始！卡组已重置 (Main: {len(main)})\n已抽取起手 5 张：")]
-        if img_path:
-            chain.append(Comp.Image.fromFileSystem(img_path))
-        await event.send(event.chain_result(chain))
-
-    @filter.command("卡组抽卡", alias=["/卡组抽卡"])
-    async def handle_sim_draw(self, event: AstrMessageEvent):
-        """模拟抽一张卡"""
-        if not self.ocg_on:
-            return await self._deny_module(event, "OCG")
-        sender_id = getattr(event.message_obj, "sender_id", None)
-        if not sender_id and hasattr(event.message_obj, "sender"):
-             sender_id = getattr(event.message_obj.sender, "user_id", None)
-        user_key = str(sender_id)
-        
-        # 检查状态
-        state = self.duel_sim.get_state(user_key)
-        if not state:
-            await event.send(event.plain_result("⚠️ 请先发送 /卡组起手 开始新对局"))
-            return
-        if not state["deck"]:
-            await event.send(event.plain_result("⚠️ 卡组已经抽干了！(Deck Out)"))
-            return
-            
-        # 抽卡
-        drawn = self.duel_sim.draw_card(user_key, 1)
-        card_id = drawn[0]
-        
-        # 获取名字
-        detail = await self.card_searcher.get_card_detail(card_id)
-        name = detail.get("cn_name", "未知卡片")
-        
-        # 绘图
-        img_path = await self.ydk_manager.draw_cards_image(drawn, f"Draw: {name}")
-        
-        chain = [Comp.Plain(f"🎴 抽牌！\n{name}\n剩余卡组: {len(state['deck'])}")]
-        if img_path:
-            chain.append(Comp.Image.fromFileSystem(img_path))
-        await event.send(event.chain_result(chain))
-
-    @filter.command("卡组检索", alias=["/卡组检索"])
-    async def handle_sim_search(self, event: AstrMessageEvent):
-        """从卡组检索特定卡片"""
-        if not self.ocg_on:
-            return await self._deny_module(event, "OCG")
-        sender_id = getattr(event.message_obj, "sender_id", None)
-        if not sender_id and hasattr(event.message_obj, "sender"):
-             sender_id = getattr(event.message_obj.sender, "user_id", None)
-        user_key = str(sender_id)
-
-        msg = event.get_message_str().strip()
-        parts = msg.split(maxsplit=1)
-        if len(parts) < 2:
-            await event.send(event.plain_result("请输入要检索的卡名，例如: /卡组检索 增殖的G"))
-            return
-        query = parts[1]
-        
-        state = self.duel_sim.get_state(user_key)
-        if not state:
-            await event.send(event.plain_result("⚠️ 请先发送 /卡组起手"))
-            return
-        if not state["deck"]:
-            await event.send(event.plain_result("⚠️ 卡组为空。"))
-            return
-
-        await event.send(event.plain_result(f"🔍 正在检索【{query}】..."))
-
-        # 1. 查卡获取 ID
-        search_res = await self.card_searcher.search_card(query)
-        if "error" in search_res or not search_res.get("result"):
-             await event.send(event.plain_result("❌ 未找到该卡片信息。"))
-             return
-        
-        # 2. 匹配卡组
-        candidates = search_res["result"]
-        target_id = None
-        target_name = ""
-        
-        for card in candidates:
-            cid = str(card["id"])
-            # 利用 simulator 的 check 方法
-            if self.duel_sim.check_deck_contains(user_key, cid):
-                target_id = cid
-                target_name = card["cn_name"]
-                break
-        
-        if target_id:
-            # 3. 移动卡片
-            self.duel_sim.remove_from_deck_to_hand(user_key, target_id)
-            
-            # 4. 展示
-            img_path = await self.ydk_manager.draw_cards_image([target_id], f"Search: {target_name}")
-            chain = [Comp.Plain(f"✅ 检索成功：【{target_name}】加入手牌。\n剩余卡组: {len(state['deck'])}")]
-            if img_path:
-                chain.append(Comp.Image.fromFileSystem(img_path))
-            await event.send(event.chain_result(chain))
-        else:
-            await event.send(event.plain_result(f"⚠️ 卡组中没有【{query}】(或已全部上手)。"))
-
-    @filter.command("卡组状态", alias=["/卡组状态"])
-    async def handle_sim_status(self, event: AstrMessageEvent):
-        """查看当前手牌和卡组数量"""
-        if not self.ocg_on:
-            return await self._deny_module(event, "OCG")
-        sender_id = getattr(event.message_obj, "sender_id", None)
-        if not sender_id and hasattr(event.message_obj, "sender"):
-             sender_id = getattr(event.message_obj.sender, "user_id", None)
-        user_key = str(sender_id)
-        
-        state = self.duel_sim.get_state(user_key)
-        if not state:
-            await event.send(event.plain_result("⚠️ 未进行对局。"))
-            return
-            
-        hand = state["hand"]
-        deck_count = len(state["deck"])
-        
-        img_path = await self.ydk_manager.draw_cards_image(hand, f"Hand ({len(hand)}) | Deck: {deck_count}")
-        
-        chain = [Comp.Plain(f"📊 当前状态\n🎴 手牌: {len(hand)} 张\n📚 卡组: {deck_count} 张")]
-        if img_path:
-            chain.append(Comp.Image.fromFileSystem(img_path))
-        await event.send(event.chain_result(chain))
-
-    @filter.command("卡组状态重置", alias=["/卡组状态重置", "/重置决斗", "/重置卡组" , "重置决斗", "重置卡组"])
-    async def handle_sim_reset(self, event: AstrMessageEvent):
-        """
-        重置当前用户的决斗状态：
-        清空手牌，将所有卡片洗回卡组。
-        不会影响任何已保存的文件。
-        """
-        if not self.ocg_on:
-            return await self._deny_module(event, "OCG")
-        # 1. 获取 User Key
-        sender_id = getattr(event.message_obj, "sender_id", None)
-        if not sender_id and hasattr(event.message_obj, "sender"):
-             sender_id = getattr(event.message_obj.sender, "user_id", None)
-        if not sender_id:
-             await event.send(event.plain_result("❌ 无法获取用户身份。"))
-             return
-        user_key = str(sender_id)
-        user_session = f"user_{sender_id}"
-
-        # 2. 重新读取私有 YDK (作为重置的基准)
-        main, _, _ = self.ydk_manager.load_last_ydk(user_session)
-        
-        if not main:
-            await event.send(event.plain_result("⚠️ 您没有正在使用的私有卡组，无法重置。\n请先使用 /卡组起手 或 /卡组转存。"))
-            return
-
-        # 3. 初始化模拟器 (这就相当于重置了)
-        # init_duel 会把传入的 main 列表作为新卡组，并清空手牌
-        self.duel_sim.init_duel(user_key, main)
-        
-        # 4. 反馈
-        await event.send(event.plain_result(f"🔄 状态已重置！\n手牌已清空，所有卡片({len(main)}张)已洗回卡组。\n您可以发送 /卡组抽卡 开始操作。"))
-
-    @filter.command("禁卡表更新", alias=["/禁卡表更新", "/更新禁卡表", "更新禁卡表"])
-    async def handle_banlist_update(self, event: AstrMessageEvent):
-        """
-        更新禁卡表数据。
-        用法: /禁卡表更新 [OCG/简中] (默认OCG)
-        """
-        if not self.ocg_on:
-            return await self._deny_module(event, "OCG")
-        msg = event.get_message_str().strip().upper()
-        parts = msg.split()
-        
-        # === 修改默认值为 OCG ===
-        target_env = "ocg" 
-        target_name = "OCG"
-        
-        if len(parts) > 1:
-            if "简中" in parts[1] or "SC" in parts[1]:
-                target_env = "sc"
-                target_name = "简中"
-            # 如果显式输入 OCG 也是 OCG
-            elif "OCG" in parts[1]:
-                target_env = "ocg"
-                target_name = "OCG"
-        
-        await event.send(event.plain_result(f"⏳ 正在获取最新 {target_name} 禁卡表，这可能需要一点时间..."))
-        
-        # 传入 card_searcher 用于变动卡名翻译
+        parts = event.get_message_str().strip().upper().split()
+        # /OCG禁卡表 [更新] [OCG|简中]
+        target_env, target_name = "ocg", "OCG"
+        do_update = True
+        for p in parts[1:]:
+            if "简中" in p or p == "SC":
+                target_env, target_name = "sc", "简中"
+            elif "OCG" in p:
+                target_env, target_name = "ocg", "OCG"
+        await event.send(event.plain_result(f"⏳ 正在获取最新 {target_name} 禁卡表..."))
         success, info, changes = await self.banlist_manager.update_banlist(target_env, self.card_searcher)
-        
         if not success:
             await event.send(event.plain_result(f"❌ {info}"))
             return
-
-        result_msg = [f"✅ {target_name} 禁卡表 {info}"]
-        
+        lines = [f"✅ {target_name} 禁卡表 {info}"]
         if changes:
-            result_msg.append("\n📊 本期变动 (中文译名):")
-            result_msg.extend([f"• {c}" for c in changes])
+            lines.append("\\n📊 本期变动:")
+            lines.extend(f"• {c}" for c in changes)
         else:
-            result_msg.append("\n(本期无卡片状态变动)")
-            
-        await event.send(event.plain_result("\n".join(result_msg)))
+            lines.append("\\n(本期无卡片状态变动)")
+        await event.send(event.plain_result("\\n".join(lines)))
 
-
-    @filter.command("卡组检查", alias=["/卡组检查", "/检查卡组", "检查卡组"])
-    async def handle_deck_check(self, event: AstrMessageEvent):
-        """检查卡组。用法: /卡组检查 [OCG/简中]"""
+    @filter.command("OCG卡组检查", alias=["/OCG卡组检查", "/卡组检查"])
+    async def handle_ocg_deck_check(self, event: AstrMessageEvent):
         if not self.ocg_on:
             return await self._deny_module(event, "OCG")
-        msg = event.get_message_str().strip().upper()
-        parts = msg.split()
-        target_env = "ocg"
-        env_display = "OCG"
-        
+        parts = event.get_message_str().strip().upper().split()
+        target_env, env_display = "ocg", "OCG"
         if len(parts) > 1:
             if "简中" in parts[1] or "SC" in parts[1]:
-                target_env = "sc"
-                env_display = "简中"
-            # 如果显式输入 OCG 也是 OCG
-            elif "OCG" in parts[1]:
-                target_env = "ocg"
-                env_display = "OCG"
-        
-        sender_id = getattr(event.message_obj, "sender_id", None)
-        if not sender_id and hasattr(event.message_obj, "sender"):
-             sender_id = getattr(event.message_obj.sender, "user_id", None)
-        user_session = f"user_{sender_id}"
-        
-        main, extra, side = self.ydk_manager.load_last_ydk(user_session)
+                target_env, env_display = "sc", "简中"
+        session = f"user_{self._get_uid(event)}"
+        main, extra, side = self.ydk_manager.load_last_ydk(session)
         if not main:
-            await event.send(event.plain_result("⚠️ 未找到卡组。"))
+            await event.send(event.plain_result("⚠️ 未找到卡组，请先 /OCG导入卡组"))
             return
-
         res = self.banlist_manager.check_deck_legality(target_env, main, extra, side)
-        
-        lines = [f"📊 卡组检查报告 ({env_display}环境)"]
-        
-        ban_issues = res["banlist_issues"]
-        if not ban_issues:
+        lines = [f"📊 卡组检查 ({env_display})"]
+        if not res["banlist_issues"]:
             lines.append("✅ 禁限表: 合规")
         else:
             lines.append("❌ 禁限表违规:")
-            for cid, status, count, limit in ban_issues:
-                # 查中文名
-                detail = await self.card_searcher.get_card_detail(cid)
-                name = detail.get("cn_name", f"ID:{cid}") # 兜底显示ID
-                lines.append(f"   • [{status}] {name}: 投入 {count} 张 (上限 {limit})")
+            for cid, status, count, limit in res["banlist_issues"]:
+                d = await self.card_searcher.get_card_detail(cid)
+                lines.append(f"  • [{status}] {d.get('cn_name', cid)}: {count}/{limit}")
+        lines.append(f"\\n🧬 Genesys: {res['genesys_points']} pt")
+        await event.send(event.plain_result("\\n".join(lines)))
 
-        g_points = res["genesys_points"]
-        g_details = res["genesys_details"]
-        
-        lines.append(f"\n🧬 Genesys点数: {g_points} pt")
-        if g_points > 0:
-            lines.append("   (点数明细):")
-            for cid, pts, count in g_details:
-                # 查中文名
-                detail = await self.card_searcher.get_card_detail(cid)
-                name = detail.get("cn_name", f"ID:{cid}") # 兜底显示ID
-                lines.append(f"   • {name}: {pts}pt × {count}")
-
-        await event.send(event.plain_result("\n".join(lines)))
-
-
-    @filter.command("Genesys更新", alias=["/Genesys更新", "/更新G点", "更新G点"])
-    async def handle_genesys_update(self, event: AstrMessageEvent):
-        """从官网更新 Genesys 构筑点数"""
+    @filter.command("OCG点数更新", alias=["/OCG点数更新", "/Genesys更新"])
+    async def handle_ocg_points(self, event: AstrMessageEvent):
         if not self.ocg_on:
             return await self._deny_module(event, "OCG")
-        await event.send(event.plain_result("⏳ 正在连接 Genesys 官网抓取数据... (解析卡名可能需要几十秒，请稍候)"))
-        
-        # 传入 card_searcher 以便进行英文名 -> ID 的反查
-        success, msg, report = await self.banlist_manager.update_genesys(self.card_searcher)
-        
-        if not success:
+        await event.send(event.plain_result("⏳ 正在抓取 Genesys 点数..."))
+        ok, msg, report = await self.banlist_manager.update_genesys(self.card_searcher)
+        if not ok:
             await event.send(event.plain_result(f"❌ {msg}"))
             return
-
-        # 构建详细报告
-        lines = [f"✅ {msg}", "", "📊 收录样本 (前15条):"]
-        
-        # 为了让报告更好看，我们随机取样或者取前几条
-        # 这里取前15条展示
+        lines = [f"✅ {msg}"]
         if report:
-            preview = report[:15]
-            for item in preview:
-                lines.append(f"• {item}")
-            if len(report) > 15:
-                lines.append(f"...以及其他 {len(report)-15} 条")
+            lines.extend(f"• {x}" for x in report[:10])
+        await event.send(event.plain_result("\\n".join(lines)))
+
+    # ---------- OCG 构筑 ----------
+
+    @filter.command("OCG导入卡组", alias=["/OCG导入卡组", "/接收卡组链接", "/接收ydk文本"])
+    async def handle_ocg_import(self, event: AstrMessageEvent):
+        """导入 ourocg/ydke 链接，或换行粘贴 YDK 文本。"""
+        if not self.ocg_on:
+            return await self._deny_module(event, "OCG")
+        session_id = self._get_session_id(event)
+        text = event.get_message_str().strip()
+        # strip first token (command)
+        if "\\n" in text:
+            head, rest = text.split("\\n", 1)
+            parts0 = head.strip().split()
+            url_or_none = parts0[1] if len(parts0) > 1 else None
+            main, extra, side = [], [], []
+            source = "YDK"
+            if url_or_none and (url_or_none.startswith("ydke://") or "ourygo" in url_or_none or "ourocg" in url_or_none):
+                main, extra, side, source = await self._parse_deck_source(url_or_none)
+            else:
+                main, extra, side = self.ydk_manager.parse_ydk(rest)
         else:
-            lines.append("(未获取到具体明细，可能是解析失败)")
-            
-        await event.send(event.plain_result("\n".join(lines)))
+            parts = text.split()
+            url = parts[1] if len(parts) > 1 else ""
+            if not url:
+                await event.send(event.plain_result(
+                    "用法:\\n1) /OCG导入卡组 <ourocg或ydke链接>\\n2) /OCG导入卡组\\n<粘贴YDK文本>"
+                ))
+                return
+            main, extra, side, source = await self._parse_deck_source(url)
+        if not main and not extra:
+            await event.send(event.plain_result("❌ 解析结果为空，请检查格式"))
+            return
+        self.ydk_manager.save_ydk(main, extra, side, session_id)
+        await event.send(event.plain_result(
+            f"✅ [{source}] 导入成功 (M:{len(main)} E:{len(extra)} S:{len(side)})\\n可用 /OCG卡组图 查看"
+        ))
 
-    # ================= 帮助指令 =================
+    async def _parse_deck_source(self, url: str):
+        if url.startswith("ydke://"):
+            return (*self.ydk_manager.parse_ydke_url(url), "YDKe")
+        if "ourygo" in url or "ourocg" in url:
+            try:
+                return (*self.ydk_manager.parse_ourocg_url(url), "Ourocg")
+            except Exception as e:
+                return [], [], [], f"ERR:{e}"
+        return [], [], [], "UNKNOWN"
 
+    @filter.command("OCG卡组图", alias=["/OCG卡组图", "/发送卡组图片"])
+    async def handle_ocg_deck_image(self, event: AstrMessageEvent):
+        if not self.ocg_on:
+            return await self._deny_module(event, "OCG")
+        session_id = self._get_session_id(event)
+        ydk_path = os.path.join(self.ydk_manager.cache_dir, f"deck_{session_id}.ydk")
+        if not os.path.exists(ydk_path):
+            await event.send(event.plain_result("⚠️ 当前会话无卡组，请先 /OCG导入卡组"))
+            return
+        await event.send(event.plain_result("🎨 正在生成构筑图..."))
+        img = await self.ydk_manager.draw_deck_image(session_id, "Deck")
+        if img:
+            await event.send(event.image_result(img))
+        else:
+            await event.send(event.plain_result("⚠️ 图片生成失败"))
 
-    # ================= PTCG 宝可梦 =================
+    @filter.command("OCG起手", alias=["/OCG起手", "/卡组起手"])
+    async def handle_ocg_hand_start(self, event: AstrMessageEvent):
+        if not self.ocg_on:
+            return await self._deny_module(event, "OCG")
+        sender_id = self._get_uid(event)
+        user_session = f"user_{sender_id}"
+        main, _, _ = self.ydk_manager.load_last_ydk(user_session)
+        if not main:
+            group_id = getattr(event.message_obj, "group_id", None)
+            if group_id and self.ydk_manager.copy_ydk_from_session(f"group_{group_id}", user_session):
+                main, _, _ = self.ydk_manager.load_last_ydk(user_session)
+                await event.send(event.plain_result("💡 已自动载入当前群聊卡组"))
+        if not main:
+            await event.send(event.plain_result("⚠️ 请先 /OCG导入卡组"))
+            return
+        self.duel_sim.init_duel(str(sender_id), main)
+        hand = self.duel_sim.draw_card(str(sender_id), 5)
+        img = await self.ydk_manager.draw_cards_image(hand, f"Hand ({len(hand)})")
+        chain = [Comp.Plain(f"🎲 起手 5 张 (卡组 {len(main)})")]
+        if img:
+            chain.append(Comp.Image.fromFileSystem(img))
+        await event.send(event.chain_result(chain))
+
+    @filter.command("OCG抽卡", alias=["/OCG抽卡", "/卡组抽卡"])
+    async def handle_ocg_draw(self, event: AstrMessageEvent):
+        if not self.ocg_on:
+            return await self._deny_module(event, "OCG")
+        key = str(self._get_uid(event))
+        state = self.duel_sim.get_state(key)
+        if not state:
+            await event.send(event.plain_result("请先 /OCG起手"))
+            return
+        if not state["deck"]:
+            await event.send(event.plain_result("卡组已抽干"))
+            return
+        drawn = self.duel_sim.draw_card(key, 1)
+        detail = await self.card_searcher.get_card_detail(drawn[0])
+        name = detail.get("cn_name", "未知")
+        img = await self.ydk_manager.draw_cards_image(drawn, name)
+        chain = [Comp.Plain(f"🎴 抽到: {name} (剩余 {len(state['deck'])})")]
+        if img:
+            chain.append(Comp.Image.fromFileSystem(img))
+        await event.send(event.chain_result(chain))
+
+    @filter.command("OCG手牌", alias=["/OCG手牌", "/卡组状态"])
+    async def handle_ocg_hand(self, event: AstrMessageEvent):
+        if not self.ocg_on:
+            return await self._deny_module(event, "OCG")
+        key = str(self._get_uid(event))
+        state = self.duel_sim.get_state(key)
+        if not state:
+            await event.send(event.plain_result("请先 /OCG起手"))
+            return
+        hand = state["hand"]
+        img = await self.ydk_manager.draw_cards_image(hand, f"Hand {len(hand)} | Deck {len(state['deck'])}")
+        chain = [Comp.Plain(f"📊 手牌 {len(hand)} · 卡组 {len(state['deck'])}")]
+        if img:
+            chain.append(Comp.Image.fromFileSystem(img))
+        await event.send(event.chain_result(chain))
+
+    # ---------- MD / DL（同一套动词） ----------
+
+    def _game_and_mod(self, which: str):
+        which = which.upper()
+        if which == "MD":
+            return GameType.MASTER_DUEL, "MD", self.md_on
+        return GameType.DUEL_LINKS, "DL", self.dl_on
+
+    @filter.command("MD更新T表", alias=["/MD更新T表"])
+    async def handle_md_tier_update(self, event: AstrMessageEvent):
+        if not self.md_on:
+            return await self._deny_module(event, "MD")
+        await self.tier_handler.update_tier_list(event, GameType.MASTER_DUEL, "Master Duel")
+
+    @filter.command("MD查T表", alias=["/MD查T表", "/MD查询T表"])
+    async def handle_md_tier_query(self, event: AstrMessageEvent):
+        if not self.md_on:
+            return await self._deny_module(event, "MD")
+        await self.tier_handler.query_tier_list(event, GameType.MASTER_DUEL, "Master Duel")
+
+    @filter.command("DL更新T表", alias=["/DL更新T表"])
+    async def handle_dl_tier_update(self, event: AstrMessageEvent):
+        if not self.dl_on:
+            return await self._deny_module(event, "DL")
+        await self.tier_handler.update_tier_list(event, GameType.DUEL_LINKS, "Duel Links")
+
+    @filter.command("DL查T表", alias=["/DL查T表", "/DL查询T表"])
+    async def handle_dl_tier_query(self, event: AstrMessageEvent):
+        if not self.dl_on:
+            return await self._deny_module(event, "DL")
+        await self.tier_handler.query_tier_list(event, GameType.DUEL_LINKS, "Duel Links")
+
+    @filter.command("MD翻译T表", alias=["/MD翻译T表"])
+    async def handle_md_tier_translate(self, event: AstrMessageEvent):
+        if not self.md_on:
+            return await self._deny_module(event, "MD")
+        await self.tier_handler.translate_tier_list(event, GameType.MASTER_DUEL)
+
+    @filter.command("DL翻译T表", alias=["/DL翻译T表"])
+    async def handle_dl_tier_translate(self, event: AstrMessageEvent):
+        if not self.dl_on:
+            return await self._deny_module(event, "DL")
+        await self.tier_handler.translate_tier_list(event, GameType.DUEL_LINKS)
+
+    @filter.command("MD查卡组", alias=["/MD查卡组"])
+    async def handle_md_deck(self, event: AstrMessageEvent):
+        if not self.md_on:
+            return await self._deny_module(event, "MD")
+        await self._deck_breakdown(event, GameType.MASTER_DUEL, "MD")
+
+    @filter.command("DL查卡组", alias=["/DL查卡组"])
+    async def handle_dl_deck(self, event: AstrMessageEvent):
+        if not self.dl_on:
+            return await self._deny_module(event, "DL")
+        await self._deck_breakdown(event, GameType.DUEL_LINKS, "DL")
+
+    async def _deck_breakdown(self, event, game_type: GameType, tag: str):
+        parts = event.get_message_str().strip().split(maxsplit=1)
+        if len(parts) < 2:
+            await event.send(event.plain_result(f"用法: /{tag}查卡组 <卡组名>\\n可先 /{tag}查T表 看名字"))
+            return
+        raw = parts[1]
+        deck_name = self._resolve_deck_name(raw)
+        if deck_name != raw:
+            await event.send(event.plain_result(f"🔍 {raw} → {deck_name}"))
+        else:
+            await event.send(event.plain_result(f"🔍 [{tag}] 正在抓取【{deck_name}】..."))
+        session_id = self._get_session_id(event)
+        try:
+            result = await self.deck_breakdown.fetch_deck_breakdown(deck_name, game_type, session_id)
+            chain = []
+            img = result.get("image_path")
+            if img and os.path.exists(img):
+                chain.append(Comp.Image.fromFileSystem(img))
+            chain.append(Comp.Plain(result.get("text", "无数据")))
+            await event.send(event.chain_result(chain))
+        except Exception as e:
+            logger.error(f"{tag}查卡组出错: {e}")
+            await event.send(event.plain_result("查询过程中发生内部错误"))
+
+    # ---------- PTCG ----------
 
     def _resolve_ptcg_query(self, query: str) -> str:
-        """支持常见中文名 -> 英文名，便于主库检索。"""
         q = query.strip()
         if not q:
             return q
@@ -1598,7 +971,7 @@ class TCGGalateaPlugin(Star):
         return q
 
     async def _send_ptcg_detail(self, event: AstrMessageEvent, card_id: str):
-        user_id = getattr(event.message_obj, "sender_id", "unknown")
+        user_id = self._get_uid(event)
         detail = await self.ptcg_searcher.get_detail(card_id)
         if "error" in detail:
             await event.send(event.plain_result(detail["error"]))
@@ -1608,7 +981,6 @@ class TCGGalateaPlugin(Star):
             "card_name": detail.get("name", "未知"),
             "card_data": detail,
         }
-        text = self.ptcg_searcher.format_detail(detail)
         chain = []
         img = self.ptcg_searcher.image_url(detail)
         if img:
@@ -1616,35 +988,22 @@ class TCGGalateaPlugin(Star):
                 chain.append(Comp.Image.fromURL(img))
             except Exception:
                 pass
-        chain.append(Comp.Plain(text))
+        chain.append(Comp.Plain(self.ptcg_searcher.format_detail(detail)))
         await event.send(event.chain_result(chain))
 
-    @filter.command(
-        "宝可梦查卡",
-        alias=[
-            "/宝可梦查卡", "宝可梦查卡",
-            "/ptcg查卡", "ptcg查卡",
-            "/查宝可梦", "查宝可梦",
-            "/宝可梦", "宝可梦",
-        ],
-    )
+    @filter.command("PTCG查卡", alias=["/PTCG查卡", "/宝可梦查卡", "/查宝可梦"])
     async def handle_ptcg_search(self, event: AstrMessageEvent):
         if not self.ptcg_on:
             return await self._deny_module(event, "PTCG")
-        message_text = event.get_message_str().strip()
-        user_id = getattr(event.message_obj, "sender_id", "unknown")
-        parts = message_text.split() if message_text else []
+        user_id = self._get_uid(event)
+        parts = event.get_message_str().strip().split()
         if len(parts) <= 1:
-            await event.send(
-                event.plain_result(
-                    "请输入宝可梦卡名（中/英），例如:\n/宝可梦查卡 喷火龙\n/宝可梦查卡 Charizard"
-                )
-            )
+            await event.send(event.plain_result("用法: /PTCG查卡 <卡名>\\n例如: /PTCG查卡 喷火龙"))
             return
         raw = " ".join(parts[1:])
         query = self._resolve_ptcg_query(raw)
         if query != raw:
-            await event.send(event.plain_result(f"🔍 中文识别: {raw} → 检索 {query} ..."))
+            await event.send(event.plain_result(f"🔍 中文识别: {raw} → {query}"))
         result = await self.ptcg_searcher.search(query, page=1)
         if "error" in result:
             await event.send(event.plain_result(f"❌ {result['error']}"))
@@ -1653,167 +1012,143 @@ class TCGGalateaPlugin(Star):
         if len(results) == 1:
             await self._send_ptcg_detail(event, results[0]["id"])
             return
-        self.ptcg_searcher.search_sessions[user_id] = {
-            "results": results,
-            "page": 1,
-            "query": query,
-        }
+        self.ptcg_searcher.search_sessions[user_id] = {"results": results, "query": query}
         await event.send(event.plain_result(self.ptcg_searcher.format_search_page(result)))
 
-    @filter.command("宝可梦换页", alias=["/宝可梦换页", "/ptcg换页", "ptcg换页"])
-    async def handle_ptcg_page(self, event: AstrMessageEvent):
-        if not self.ptcg_on:
-            return await self._deny_module(event, "PTCG")
-        user_id = getattr(event.message_obj, "sender_id", "unknown")
-        parts = event.get_message_str().strip().split()
-        page_str = parts[1] if len(parts) > 1 else ""
-        if not page_str.isdigit():
-            await event.send(event.plain_result("请输入有效的页码"))
-            return
-        if user_id not in self.ptcg_searcher.search_sessions:
-            await event.send(event.plain_result("没有正在进行的宝可梦搜索会话"))
-            return
-        session = self.ptcg_searcher.search_sessions[user_id]
-        all_results = session["results"]
-        page = int(page_str)
-        page_size = 10
-        total = len(all_results)
-        total_pages = max(1, (total + page_size - 1) // page_size)
-        if page < 1 or page > total_pages:
-            await event.send(event.plain_result(f"页码超出范围 (1-{total_pages})"))
-            return
-        page_data = {
-            "results": all_results[(page - 1) * page_size : page * page_size],
-            "page": page,
-            "page_size": page_size,
-            "total": total,
-            "total_pages": total_pages,
-            "source": "cache",
-            "query": session["query"],
-        }
-        await event.send(event.plain_result(self.ptcg_searcher.format_search_page(page_data)))
-
-    @filter.command("宝可梦序号", alias=["/宝可梦序号", "/ptcg序号", "ptcg序号"])
+    @filter.command("PTCG序号", alias=["/PTCG序号", "/宝可梦序号"])
     async def handle_ptcg_select(self, event: AstrMessageEvent):
         if not self.ptcg_on:
             return await self._deny_module(event, "PTCG")
-        user_id = getattr(event.message_obj, "sender_id", "unknown")
+        user_id = self._get_uid(event)
         parts = event.get_message_str().strip().split()
-        num_str = parts[1] if len(parts) > 1 else ""
-        if not num_str.isdigit():
-            await event.send(event.plain_result("请输入卡片序号"))
+        if len(parts) < 2 or not parts[1].isdigit():
+            await event.send(event.plain_result("用法: /PTCG序号 <序号>"))
             return
-        num = int(num_str)
         if user_id not in self.ptcg_searcher.search_sessions:
-            await event.send(event.plain_result("请先使用 /宝可梦查卡 搜索"))
+            await event.send(event.plain_result("请先 /PTCG查卡"))
             return
         results = self.ptcg_searcher.search_sessions[user_id]["results"]
+        num = int(parts[1])
         if 1 <= num <= len(results):
             await self._send_ptcg_detail(event, results[num - 1]["id"])
         else:
             await event.send(event.plain_result("序号超出范围"))
 
-    @filter.command("宝可梦高清卡图", alias=["/宝可梦高清卡图", "/ptcg卡图", "ptcg卡图"])
+    @filter.command("PTCG换页", alias=["/PTCG换页", "/宝可梦换页"])
+    async def handle_ptcg_page(self, event: AstrMessageEvent):
+        if not self.ptcg_on:
+            return await self._deny_module(event, "PTCG")
+        user_id = self._get_uid(event)
+        parts = event.get_message_str().strip().split()
+        if len(parts) < 2 or not parts[1].isdigit():
+            await event.send(event.plain_result("用法: /PTCG换页 <页码>"))
+            return
+        if user_id not in self.ptcg_searcher.search_sessions:
+            await event.send(event.plain_result("没有进行中的搜索"))
+            return
+        all_r = self.ptcg_searcher.search_sessions[user_id]["results"]
+        page = int(parts[1])
+        page_size = 10
+        total_pages = max(1, (len(all_r) + page_size - 1) // page_size)
+        if page < 1 or page > total_pages:
+            await event.send(event.plain_result(f"页码超出范围 (1-{total_pages})"))
+            return
+        page_data = {
+            "results": all_r[(page - 1) * page_size : page * page_size],
+            "page": page,
+            "page_size": page_size,
+            "total": len(all_r),
+            "total_pages": total_pages,
+            "source": "cache",
+            "query": self.ptcg_searcher.search_sessions[user_id].get("query", ""),
+        }
+        await event.send(event.plain_result(self.ptcg_searcher.format_search_page(page_data)))
+
+    @filter.command("PTCG卡图", alias=["/PTCG卡图", "/宝可梦高清卡图"])
     async def handle_ptcg_image(self, event: AstrMessageEvent):
         if not self.ptcg_on:
             return await self._deny_module(event, "PTCG")
-        user_id = getattr(event.message_obj, "sender_id", "unknown")
+        user_id = self._get_uid(event)
         if user_id not in self.ptcg_searcher.last_viewed:
-            await event.send(event.plain_result("请先使用 /宝可梦查卡 查看一张卡"))
+            await event.send(event.plain_result("请先 /PTCG查卡"))
             return
         detail = self.ptcg_searcher.last_viewed[user_id].get("card_data") or {}
         img = self.ptcg_searcher.image_url(detail)
         if not img:
-            await event.send(event.plain_result("未找到卡图链接"))
+            await event.send(event.plain_result("未找到卡图"))
             return
         try:
             await event.send(event.image_result(img))
         except Exception:
             await event.send(event.plain_result(img))
 
-    @filter.command("随机宝可梦", alias=["/随机宝可梦", "/ptcg随机", "ptcg随机"])
+    @filter.command("PTCG随机", alias=["/PTCG随机", "/随机宝可梦"])
     async def handle_ptcg_random(self, event: AstrMessageEvent):
         if not self.ptcg_on:
             return await self._deny_module(event, "PTCG")
-        # 用常见卡池随机一发
-        pool = list(POKEMON_CN_MAP.keys())
-        if not pool:
-            await event.send(event.plain_result("宝可梦名池为空"))
-            return
-        name = random.choice(pool)
+        name = random.choice(list(POKEMON_CN_MAP.keys()))
         result = await self.ptcg_searcher.search(name, page=1)
         if "error" in result or not result.get("all_results"):
-            await event.send(event.plain_result("随机抽取失败，请稍后再试"))
+            await event.send(event.plain_result("随机失败，请稍后再试"))
             return
-        # 优先取同名
-        results = result["all_results"]
-        pick = results[0]
-        for c in results:
+        pick = result["all_results"][0]
+        for c in result["all_results"]:
             if c.get("name") == name:
                 pick = c
                 break
         await self._send_ptcg_detail(event, pick["id"])
 
-    @filter.command("模块状态", alias=["/模块状态", "/TCG状态", "tcgstatus", "/tcgstatus"])
-    async def handle_module_status(self, event: AstrMessageEvent):
-        flags = [
+    # ---------- 全局 ----------
+
+    @filter.command("TCG状态", alias=["/TCG状态", "/模块状态", "/tcgstatus"])
+    async def handle_status(self, event: AstrMessageEvent):
+        rows = [
             ("OCG", self.ocg_on),
             ("MD", self.md_on),
             ("DL", self.dl_on),
             ("PTCG", self.ptcg_on),
         ]
-        lines = ["📦 TCG Galatea 模块状态:"]
-        for name, on in flags:
-            lines.append(f"  {'✅' if on else '❌'} {name}")
-        lines.append("\n可在管理面板 → 插件配置中开关各模块。")
-        await event.send(event.plain_result("\n".join(lines)))
+        lines = ["📦 TCG工具箱 · 模块状态"]
+        lines += [f"  {'✅' if on else '❌'} {n}" for n, on in rows]
+        lines.append("\\n开关在 管理面板 → 插件配置 中修改")
+        await event.send(event.plain_result("\\n".join(lines)))
 
-    @filter.command(
-        "游戏王帮助",
-        alias=["/游戏王帮助", "游戏王指令", "/游戏王指令", "duelhelp", "/duelhelp", "/TCG帮助", "TCG帮助", "/tcghelp"],
-    )
-    async def handle_duel_help(self, event: AstrMessageEvent):
-        """发送插件功能总览"""
-        help_text = [
-            "TCG Galatea 多游戏工具箱 v2.0.0",
-            "================================",
-            "⚙️ **模块开关** (管理面板 → 插件配置)",
-            "• OCG / MD / DL / PTCG 可独立启用",
-            "• /模块状态 : 查看当前启用情况",
-            "",
-            "🔍 **OCG 游戏王查卡**" + (" (已关)" if not self.ocg_on else ""),
-            "• `/查卡 <卡名>` : 查询卡片详情",
-            "• `/查卡序号 <数字>` / `/查卡换页 <数字>`",
-            "• `/发送高清卡图` / `/随机一卡`",
-            "• `/查询裁定` / `/查询卡盒`",
-            "• `/发动王牌圣杯`",
-            "",
-            "📊 **OCG 环境**",
-            "• `/OCG饼图更新` / `/OCG饼图`",
-            "• `/禁卡表更新 [OCG/简中]` / `/Genesys更新`",
-            "• `/卡组检查 [OCG/简中]`",
-            "",
-            "💾 **OCG 构筑与模拟**",
-            "• `/接收卡组链接` / `/接收ydk文本`",
-            "• `/发送ydk` / `/发送卡组图片`",
-            "• `/卡组转存` / `/卡组分享`",
-            "• `/卡组起手` / `/卡组抽卡` / `/卡组检索` / `/卡组状态`",
-            "",
-            "⚔️ **MD Master Duel**" + (" (已关)" if not self.md_on else ""),
-            "• `/MD更新T表` / `/MD查询T表` / `/MD查卡组 <名>`",
-            "",
-            "📱 **DL Duel Links**" + (" (已关)" if not self.dl_on else ""),
-            "• `/DL更新T表` / `/DL查询T表` / `/DL查卡组 <名>`",
-            "",
-            "• `/翻译T表 [DL/MD]` · `/查询卡组翻译` · `/修改卡组翻译`",
-            "",
-            "🐢 **PTCG 宝可梦**" + (" (已关)" if not self.ptcg_on else ""),
-            "• `/宝可梦查卡 <中/英卡名>` : 查卡 (TCGdex/pokemontcg.io)",
-            "• `/宝可梦序号 <数字>` / `/宝可梦换页 <页码>`",
-            "• `/宝可梦高清卡图` / `/随机宝可梦`",
-            "• 中文名常见映射已内置，也可直接查英文名",
-            "================================",
-            "💡 部分更新指令需要良好网络；PTCG 无 Key 时有频率限制。",
-        ]
-        await event.send(event.plain_result("\n".join(help_text)))
+    @filter.command("TCG帮助", alias=["/TCG帮助", "/游戏王帮助", "/tcghelp", "/帮助TCG"])
+    async def handle_help(self, event: AstrMessageEvent):
+        ocg = " ✅" if self.ocg_on else " ❌"
+        md = " ✅" if self.md_on else " ❌"
+        dl = " ✅" if self.dl_on else " ❌"
+        pt = " ✅" if self.ptcg_on else " ❌"
+        text = f"""TCG工具箱 v2.1.0
+================================
+全局
+• /TCG帮助  /TCG状态
 
+OCG 游戏王{ocg}
+• /OCG查卡 <卡名>
+• /OCG序号 <n>  /OCG换页 <n>
+• /OCG卡图 [CID]  /OCG随机
+• /OCG饼图[更新]
+• /OCG禁卡表 [OCG|简中]
+• /OCG点数更新
+• /OCG卡组检查 [OCG|简中]
+• /OCG导入卡组 <链接或YDK>
+• /OCG卡组图
+• /OCG起手  /OCG抽卡  /OCG手牌
+
+MD Master Duel{md}
+• /MD更新T表  /MD查T表
+• /MD查卡组 <名>  /MD翻译T表
+
+DL Duel Links{dl}
+• /DL更新T表  /DL查T表
+• /DL查卡组 <名>  /DL翻译T表
+
+PTCG 宝可梦{pt}
+• /PTCG查卡 <中/英卡名>
+• /PTCG序号 <n>  /PTCG换页 <n>
+• /PTCG卡图  /PTCG随机
+
+风格: /模块 + 动词，四模块对齐
+================================"""
+        await event.send(event.plain_result(text))

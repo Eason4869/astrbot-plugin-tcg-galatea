@@ -4,8 +4,39 @@
 
 ## [Unreleased]
 
-- 预留更多 PTCG 中文映射与简中卡包收录
+- 规划：MTG / WS / VG 等新卡牌游戏模块
 - 预留 `ptcg.prefer_source` 生效逻辑
+
+---
+
+## [2.1.0] - 2026-09-09
+
+### Added
+- 插件 LOGO（Minecraft 像素风 `logo.png`）
+- README **ToDo** 规划区：MTG / Weiss Schwarz / Vanguard 等
+- 统一全局指令：`/TCG帮助` · `/TCG状态`
+
+### Changed
+- **中文名**：游戏王工具箱 → **TCG工具箱**
+- **指令风格统一为「模块 + 动词」**
+  - OCG：`/OCG查卡` `/OCG序号` `/OCG换页` `/OCG卡图` `/OCG随机` `/OCG饼图` `/OCG禁卡表` `/OCG卡组检查` `/OCG导入卡组` `/OCG卡组图` `/OCG起手` `/OCG抽卡` `/OCG手牌`
+  - MD：`/MD更新T表` `/MD查T表` `/MD查卡组` `/MD翻译T表`
+  - DL：`/DL更新T表` `/DL查T表` `/DL查卡组` `/DL翻译T表`
+  - PTCG：`/PTCG查卡` `/PTCG序号` `/PTCG换页` `/PTCG卡图` `/PTCG随机`
+- 版本 `2.0.0` → `2.1.0`
+- 帮助页按模块对齐展示
+
+### Removed
+精简低频 / 冗余指令（核心能力仍在，旧别名尽量兼容）：
+- `/发动王牌圣杯`
+- `/查询裁定` · `/查询卡盒`
+- `/发送ydk`（文件）
+- `/卡组转存` · `/卡组分享`
+- `/卡组检索`
+- `/卡组状态重置`（用 `/OCG起手` 重开）
+- `/查询卡组翻译` · `/修改卡组翻译`（由 `/MD翻译T表` 等覆盖）
+- 独立 `/翻译T表`（拆成 `/MD翻译T表` `/DL翻译T表`）
+- 独立 `/接收ydk文本` `/接收卡组链接`（合并为 `/OCG导入卡组`）
 
 ---
 
@@ -60,5 +91,6 @@
 
 ---
 
-[Unreleased]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v2.1.0
 [2.0.0]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v2.0.0
