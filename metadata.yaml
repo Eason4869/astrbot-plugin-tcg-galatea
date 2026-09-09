@@ -1,6 +1,6 @@
 name: astrbot_plugin_tcg_galatea
 display_name: TCG工具箱
-desc: 多游戏卡牌工具箱。OCG/MD/DL/PTCG 四模块独立开关，统一指令：查卡(模糊/卡密/自动高清图)/裁定/饼图/禁卡表/随机。
-version: 2.2.1
+desc: 五大指令组 OCG/简中/MD/DL/PTCG 独立开关。子指令：查卡(模糊/卡密/自动高清图)/序号/换页/裁定/饼图/禁卡表/随机。
+version: 2.3.0
 author: Noctfom, Eason4869
 repo: https://github.com/Eason4869/astrbot-plugin-tcg-galatea

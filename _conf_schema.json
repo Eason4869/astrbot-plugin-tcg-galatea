@@ -1,25 +1,30 @@
 {
   "modules": {
-    "description": "四大模块独立开关",
+    "description": "五大模块独立开关",
     "type": "object",
     "items": {
       "enable_ocg": {
-        "description": "启用 OCG 模块（游戏王查卡/卡图/裁定/卡盒/禁卡表/RoTK饼图/YDK构筑/决斗模拟）",
+        "description": "启用 OCG 指令组（日文/英文卡池、OCG禁卡表、RoTK饼图）",
+        "type": "bool",
+        "default": true
+      },
+      "enable_sc": {
+        "description": "启用 简中 指令组（简中禁卡表与环境）",
         "type": "bool",
         "default": true
       },
       "enable_md": {
-        "description": "启用 Master Duel 模块（MD T表 / MD查卡组）",
+        "description": "启用 MD 指令组（Master Duel，T表映射为饼图）",
         "type": "bool",
         "default": true
       },
       "enable_dl": {
-        "description": "启用 Duel Links 模块（DL T表 / DL查卡组）",
+        "description": "启用 DL 指令组（Duel Links，T表映射为饼图）",
         "type": "bool",
         "default": true
       },
       "enable_ptcg": {
-        "description": "启用宝可梦 PTCG 模块（/宝可梦查卡 等）",
+        "description": "启用 PTCG 指令组（宝可梦）",
         "type": "bool",
         "default": true
       }
@@ -30,7 +35,7 @@
     "type": "object",
     "items": {
       "api_key": {
-        "description": "pokemontcg.io 可选 API Key（不填则使用 TCGdex 与低频率 pokemontcg.io）",
+        "description": "pokemontcg.io 可选 API Key",
         "type": "string",
         "default": ""
       },
