@@ -1,4 +1,4 @@
-﻿# 🟩 TCG工具箱
+# 🟩 TCG工具箱
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/Eason4869/astrbot-plugin-tcg-galatea/main/logo.png" width="128" height="128" alt="TCG工具箱 Logo" />
@@ -12,104 +12,172 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.4.2-38b000?style=flat-square&labelColor=1b1b1b" alt="Version" />
+  <img src="https://img.shields.io/badge/Version-1.0.0-38b000?style=flat-square&labelColor=1b1b1b" alt="Version" />
   <img src="https://img.shields.io/badge/AstrBot-v4.0%2B-2b6cb0?style=flat-square&labelColor=1b1b1b" alt="AstrBot" />
+  <img src="https://img.shields.io/badge/Python-3.10%2B-3776ab?style=flat-square&labelColor=1b1b1b" alt="Python" />
   <img src="https://img.shields.io/badge/License-GPL--3.0-38b000?style=flat-square&labelColor=1b1b1b" alt="License" />
   <img src="https://img.shields.io/badge/Groups-OCG%20%7C%20MD%20%7C%20DL%20%7C%20PTCG-69b34c?style=flat-square&labelColor=1b1b1b" alt="Groups" />
 </p>
 
-> 四大指令组 · 独立开关 · 统一子指令
+AstrBot 多游戏卡牌工具箱插件。四大指令组 **OCG / MD / DL / PTCG** 独立开关，统一「组名 + 子指令」用法。
 
 ---
 
-## 指令结构
+## 功能特性
 
-用法：`<组名> <子指令> [参数]`。
+| 能力 | 说明 |
+|------|------|
+| 统一指令组 | `OCG` · `MD` · `DL` · `PTCG`，空格分隔，大小写不敏感（别名覆盖） |
+| 查卡 | 支持**模糊 / 全名 / 卡密**；命中后自动发送详情 + 高清卡图（图文同条） |
+| 环境信息 | OCG 饼图（RoTK）；MD / DL 饼图（T 表，可更新） |
+| 禁卡表 | OCG 官方禁限表同步（首次约 1–3 分钟） |
+| 随机 | 各组随机一卡，自动出图 |
+| 模块开关 | 管理面板可分别关闭某一组，关闭后对应指令会提示未启用 |
 
-### 全局
+---
+
+## 指令说明
+
+用法格式：
+
+```text
+<组名> <子指令> [参数]
+```
+
+### 全局指令
 
 | 指令 | 别名 | 说明 |
 |------|------|------|
-| `TCG帮助` | `tcghelp` | 功能总览 |
-| `TCG状态` | `tcgstatus` / `模块状态` | 查看四模块开关 |
+| `TCG帮助` | `tcghelp` / `TCGHelp` | 功能总览 |
+| `TCG状态` | `tcgstatus` / `模块状态` | 查看四模块启用状态 |
 
 ### 指令组
 
-| 组名 | 常用别名 | 配置开关 |
-|------|----------|----------|
+| 组名 | 别名（大小写均可） | 配置开关 |
+|------|-------------------|----------|
 | `OCG` | `ocg` / `Ocg` | `modules.enable_ocg` |
 | `MD` | `md` / `Md` / `masterduel` | `modules.enable_md` |
 | `DL` | `dl` / `Dl` / `duellinks` | `modules.enable_dl` |
 | `PTCG` | `ptcg` / `Ptcg` / `宝可梦` / `pokemon` | `modules.enable_ptcg` |
 
-### 子指令
+### 子指令一览
 
 | 子指令 | 英文别名 | 参数 | OCG | MD | DL | PTCG |
-|--------|----------|------|-----|----|----|------|
-| `查卡` | `search` | `<卡名或卡密>` | ✓ | ✓ | ✓ | ✓ |
-| `序号` | `select` | `<n>` | ✓ | ✓ | ✓ | ✓ |
-| `换页` | `page` | `<页码>` | ✓ | ✓ | ✓ | ✓ |
-| `饼图` | `meta` / `T表` | `[更新]` | RoTK | T表 | T表 | — |
-| `随机` | `random` | — | ✓ | ✓ | ✓ | ✓ |
+|--------|----------|------|:---:|:--:|:--:|:----:|
+| `查卡` | `search` / `Search` | `<卡名或卡密>` | ✓ | ✓ | ✓ | ✓ |
+| `序号` | `select` / `Select` | `<序号>` | ✓ | ✓ | ✓ | ✓ |
+| `换页` | `page` / `Page` | `<页码>` | ✓ | ✓ | ✓ | ✓ |
+| `饼图` | `meta` / `pie` / `T表` | `[更新]` | RoTK | T 表 | T 表 | — |
+| **`禁卡表`** | `banlist` / `limited` | — | **✓** | — | — | — |
+| `随机` | `random` / `Random` | — | ✓ | ✓ | ✓ | ✓ |
 
-查卡支持模糊 / 全名 / 卡密，命中后自动出详情 + 高清卡图。
+说明：
 
-### 示例
+- **查卡**：模糊、全名、卡密（纯数字）均可；唯一结果直接出详情+卡图，多结果出列表。
+- **序号 / 换页**：对上一次查卡列表操作。
+- **饼图**：不带参数为查看本地缓存；参数含「更新」则重新抓取。
+  - OCG：RoTK 环境饼图  
+  - MD / DL：duelmeta 的 T 表  
+- **禁卡表**：目前仅 **OCG** 提供（`OCG 禁卡表`，可选 `OCG|简中` 后缀）；MD / DL / PTCG 暂无本地数据源。
+- **随机**：随机一卡，自动发送详情与卡图。
 
-| 输入 | 作用 |
-|------|------|
-| `TCG帮助` | 查看帮助 |
-| `OCG 查卡 青眼白龙` | 查卡 |
-| `OCG 查卡 89631139` | 卡密查卡 |
-| `OCG 序号 1` | 列表第 1 张 |
-| `OCG 饼图更新` | 抓取 RoTK 饼图 |
-| `OCG 禁卡表` | 更新 OCG 禁卡表 |
-| `md 饼图更新` | 更新 MD T 表 |
-| `PTCG 查卡 喷火龙` | 宝可梦查卡 |
-| `ptcg random` | 随机宝可梦 |
+### 常用示例
+
+```text
+TCG帮助
+TCG状态
+
+OCG 查卡 青眼白龙
+OCG 查卡 89631139
+OCG 序号 1
+OCG 饼图更新
+OCG 禁卡表
+OCG 随机
+
+MD 饼图更新
+MD 饼图
+
+DL 饼图更新
+
+PTCG 查卡 皮卡丘
+PTCG 查卡 Charizard
+PTCG 序号 1
+PTCG 随机
+
+# 小写与英文子指令同样可用
+ocg search 89631139
+ptcg random
+```
 
 ---
 
 ## 配置
 
+在 AstrBot **管理面板 → 插件配置** 中修改：
+
 | 配置项 | 默认 | 说明 |
 |--------|------|------|
-| `modules.enable_ocg` | true | OCG 组 |
-| `modules.enable_md` | true | MD 组 |
-| `modules.enable_dl` | true | DL 组 |
-| `modules.enable_ptcg` | true | PTCG 组 |
-| `ptcg.api_key` | "" | pokemontcg.io 可选 Key |
+| `modules.enable_ocg` | `true` | 是否启用 OCG 指令组 |
+| `modules.enable_md` | `true` | 是否启用 MD 指令组 |
+| `modules.enable_dl` | `true` | 是否启用 DL 指令组 |
+| `modules.enable_ptcg` | `true` | 是否启用 PTCG 指令组 |
+| `ptcg.api_key` | `""` | pokemontcg.io 可选 API Key（提高频率限制） |
+| `ptcg.prefer_source` | `tcgdex` | 预留数据源偏好 |
+
+---
+
+## 数据源
+
+| 游戏 | 来源 |
+|------|------|
+| 游戏王卡片 | [ygocdb](https://ygocdb.com)（百鸽） |
+| OCG 饼图 | RoTK |
+| OCG 禁卡表 | 官方禁限表接口 |
+| MD / DL T 表 | masterduelmeta / duellinksmeta |
+| 宝可梦 | [TCGdex](https://www.tcgdex.dev)（主）→ [pokemontcg.io](https://pokemontcg.io)（备） |
 
 ---
 
 ## 安装
 
-1. 放入 AstrBot `data/plugins/`
-2. 重启后在管理面板启用
-3. 依赖：`aiohttp` `Pillow` `certifi`
+1. 将本仓库目录放入 AstrBot 的 `data/plugins/`
+2. 重启 AstrBot
+3. 在管理面板启用插件，并按需开关四个模块
 
 ```bash
 git clone https://github.com/Eason4869/astrbot-plugin-tcg-galatea.git
 ```
 
+依赖（`requirements.txt`）：
+
+- `aiohttp`
+- `Pillow`
+- `certifi`
+
 ---
 
-## ToDo
+## ToDo / 规划
 
 | 模块 | 代号 | 状态 |
 |------|------|------|
-| 魔法风云会 | MTG | 📋 规划 |
-| Weiss Schwarz | WS | 📋 规划 |
-| Vanguard | VG | 📋 规划 |
-| MD/DL 禁卡表 | — | 💡 想法 |
+| 魔法风云会 | MTG | 规划中 |
+| Weiss Schwarz | WS | 规划中 |
+| Vanguard | VG | 规划中 |
+| MD / DL 禁卡表 | — | 想法 |
+| PTCG 简中卡库 | — | 想法 |
+
+欢迎 Issue / PR 认领。
 
 ---
 
 ## 致谢
 
-- 原插件 [astrbot-plugin-duel-galatea](https://github.com/Noctfom/astrbot-plugin-duel-galatea)
-- [AstrBot](https://github.com/AstrBotDevs/AstrBot) · ygocdb · RoTK · duelmeta · TCGdex · pokemontcg.io
+- 基于 [Noctfom/astrbot-plugin-duel-galatea](https://github.com/Noctfom/astrbot-plugin-duel-galatea) 扩展
+- [AstrBot](https://github.com/AstrBotDevs/AstrBot)
+- ygocdb · RoTK · duelmeta · TCGdex · pokemontcg.io
+
+---
 
 ## License
 
-GPL-3.0
+[GPL-3.0](./LICENSE)
