@@ -66,7 +66,7 @@
 
 ## [上游基线]
 
-功能与实现参考 [Noctfom/astrbot-plugin-duel-galatea](https://github.com/Noctfom/astrbot-plugin-duel-galatea) v1.4.1。
+灵感来源：[Noctfom/astrbot-plugin-duel-galatea](https://github.com/Noctfom/astrbot-plugin-duel-galatea)。
 
 ---
 

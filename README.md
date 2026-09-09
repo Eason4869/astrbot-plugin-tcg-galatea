@@ -172,7 +172,7 @@ git clone https://github.com/Eason4869/astrbot-plugin-tcg-galatea.git
 
 ## 致谢
 
-- 基于 [Noctfom/astrbot-plugin-duel-galatea](https://github.com/Noctfom/astrbot-plugin-duel-galatea) 扩展
+- 灵感来源：[Noctfom/astrbot-plugin-duel-galatea](https://github.com/Noctfom/astrbot-plugin-duel-galatea)
 - [AstrBot](https://github.com/AstrBotDevs/AstrBot)
 - ygocdb · RoTK · duelmeta · TCGdex · pokemontcg.io
 

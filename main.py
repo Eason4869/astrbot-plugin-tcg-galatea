@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 TCG Galatea - 游戏王 + 宝可梦多游戏工具箱
 OCG / MD / DL / PTCG 四模块独立开关
@@ -351,7 +351,7 @@ class YugiohCardSearcher:
         return text.strip()
 
 
-@register("tcg_galatea", "Noctfom, Eason4869", "TCG工具箱", "1.0.0")
+@register("tcg_galatea", "Eason4869", "TCG工具箱", "1.0.0")
 class TCGGalateaPlugin(Star):
     def __init__(self, context=None, config: AstrBotConfig = None):
         super().__init__(context, config)
