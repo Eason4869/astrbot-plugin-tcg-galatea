@@ -244,7 +244,7 @@ class PTCGSearcher:
             detail = await self._detail_pokemontcg(card_id)
         return detail or {"error": f"获取卡片 {card_id} 详情失败"}
 
-    def format_search_page(self, data: Dict[str, Any]) -> str:
+    def format_search_page(self, data: Dict[str, Any], cmd: str = "PTCG") -> str:
         results = data["results"]
         lines = [
             f"🔍 PTCG 搜索结果 (第 {data['page']}/{data['total_pages']} 页，共 {data['total']} 个)",
@@ -262,7 +262,7 @@ class PTCGSearcher:
             local = card.get("localId") or card.get("number") or ""
             lines.append(f"{i}. {name} [{cat}] {set_name} #{local}")
         lines.append("")
-        lines.append("💡 /宝可梦序号 <序号> 查看详情 · /宝可梦换页 <页码> 切换")
+        lines.append(f"💡 /{cmd} 序号 <序号> 查看详情 · /{cmd} 换页 <页码> 切换")
         return "\n".join(lines)
 
     def format_detail(self, card: Dict[str, Any]) -> str:
@@ -390,23 +390,33 @@ class PTCGSearcher:
             cat = CATEGORY_CN.get(card.get("category", ""), card.get("category", ""))
             lines.append(f"{i}. {name}{tag} [{cat}]")
         lines.append(
-            "\n💡 /宝可梦序号 [序号] 查看详情，/宝可梦换页 [页码] 切换页面"
+            "\n💡 /PTCG 序号 [序号] 查看详情，/PTCG 换页 [页码] 切换页面"
         )
         return "\n".join(lines)
 
     def image_url(self, card: Dict[str, Any]) -> Optional[str]:
-        if card.get("image"):
-            url = card["image"]
-            if not url.startswith("http"):
-                return None
-            # TCGdex 默认给高清，可选加 /low
+        """返回可直接打开的图片地址。
+
+        TCGdex 资产无扩展名无法访问，需补 /high.png 或 /low.png。
+        """
+        url = (card.get("image") or "").strip()
+        if not url:
+            # pokemontcg 风格兜底
+            card_id = card.get("id", "")
+            number = card.get("localId") or card.get("number")
+            if card_id and "-" in card_id and number:
+                set_id = card_id.rsplit("-", 1)[0]
+                return f"https://images.pokemontcg.io/{set_id}/{number}.png"
+            return None
+        if not url.startswith("http"):
+            return None
+        # 已是可访问的完整文件
+        if url.endswith((".png", ".jpg", ".jpeg", ".webp")):
             return url
-        # pokemontcg 风格
-        card_id = card.get("id", "")
-        if "-" in card_id and card.get("number"):
-            set_id, number = card_id.rsplit("-", 1)
-            return f"https://images.pokemontcg.io/{set_id}/{number}.png"
-        return None
+        # TCGdex assets: .../en/swsh/xxx/1 -> .../high.png
+        if "assets.tcgdex.net" in url:
+            return url.rstrip("/") + "/high.png"
+        return url
 
     # ---------- TCGdex ----------
 

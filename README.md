@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.3.1-38b000?style=flat-square&labelColor=1b1b1b" alt="Version" />
+  <img src="https://img.shields.io/badge/Version-2.3.2-38b000?style=flat-square&labelColor=1b1b1b" alt="Version" />
   <img src="https://img.shields.io/badge/AstrBot-v4.0%2B-2b6cb0?style=flat-square&labelColor=1b1b1b" alt="AstrBot" />
   <img src="https://img.shields.io/badge/License-GPL--3.0-38b000?style=flat-square&labelColor=1b1b1b" alt="License" />
   <img src="https://img.shields.io/badge/Groups-OCG%20%7C%20简中%20%7C%20MD%20%7C%20DL%20%7C%20PTCG-69b34c?style=flat-square&labelColor=1b1b1b" alt="Groups" />

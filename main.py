@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 TCG Galatea - 游戏王 + 宝可梦多游戏工具箱
 OCG / MD / DL / PTCG 四模块独立开关
@@ -255,7 +255,7 @@ class YugiohCardSearcher:
             info.append("🔸 灵摆效果:\n{}".format(pdesc))
 
     def format_search_results(
-        self, results: List[Dict], page: int, user_id: str
+        self, results: List[Dict], page: int, user_id: str, cmd: str = "OCG"
     ) -> str:
         page_size = 10
         start_idx = (page - 1) * page_size
@@ -274,9 +274,8 @@ class YugiohCardSearcher:
             type_map = {"monster": "[怪兽]", "spell": "[魔法]", "trap": "[陷阱]"}
             type_tag = type_map.get(card_type, "")
             output.append("{}. {} {}".format(i, name, type_tag))
-        mode = ""
         output.append(
-            "\n💡 序号 <n> 查看详情(自动出卡图) · 换页 <n> · 也可直接查卡密"
+            "\n💡 /{} 序号 <序号> 查看详情 · /{} 换页 <页码> 切换".format(cmd, cmd)
         )
         return "\n".join(output)
     
@@ -352,7 +351,7 @@ class YugiohCardSearcher:
         return text.strip()
 
 
-@register("tcg_galatea", "Noctfom, Eason4869", "TCG工具箱", "2.3.1")
+@register("tcg_galatea", "Noctfom, Eason4869", "TCG工具箱", "2.3.2")
 class TCGGalateaPlugin(Star):
     def __init__(self, context=None, config: AstrBotConfig = None):
         super().__init__(context, config)
@@ -563,35 +562,36 @@ class TCGGalateaPlugin(Star):
         logger.warning(f"DuelGalatea: 无法识别会话 ID，使用 default。Obj: {obj}")
         return "default"
     
-    async def _safe_send_text_then_image(
+    async def _download_file(self, session: aiohttp.ClientSession, url: str, dest: str) -> str:
+        """下载图片到本地，成功返回路径。"""
+        if not url:
+            return ""
+        try:
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            to = aiohttp.ClientTimeout(total=20)
+            async with session.get(url, timeout=to, ssl=False) as resp:
+                if resp.status != 200:
+                    return ""
+                data = await resp.read()
+            if not data or len(data) < 100:
+                return ""
+            with open(dest, "wb") as f:
+                f.write(data)
+            return dest
+        except Exception as e:
+            logger.warning(f"下载图片失败 {url}: {e}")
+            return ""
+
+    async def _send_card_detail(
         self,
         event: AstrMessageEvent,
-        text: str,
-        image_path: str = None,
-        image_url: str = None,
+        card_id: str,
+        card_name_fallback: str = "未知",
+        prefetched: Dict = None,
+        cmd: str = "OCG",
     ):
-        """先发文本，再尝试发图；图失败只回退链接，不让整条指令炸掉。"""
-        await event.send(event.plain_result(text))
-        if image_path and os.path.exists(image_path):
-            try:
-                await event.send(event.image_result(image_path))
-                return
-            except Exception as e:
-                logger.warning(f"本地图发送失败: {e}")
-        if image_url:
-            try:
-                await event.send(event.image_result(image_url))
-                return
-            except Exception as e:
-                logger.warning(f"URL图发送失败: {e}")
-                try:
-                    await event.send(event.plain_result(f"🖼 卡图: {image_url}"))
-                except Exception:
-                    pass
-
-    async def _send_card_detail(self, event: AstrMessageEvent, card_id: str, card_name_fallback: str = "未知", prefetched: Dict = None):
-        """获取详情、缓存，自动附带高清卡图后发送。"""
-        user_id = self._get_uid(event) if hasattr(self, "_get_uid") else getattr(event.message_obj, "sender_id", "unknown")
+        """与原插件一致：一条消息里 图+文 一起发。"""
+        user_id = getattr(event.message_obj, "sender_id", "unknown")
         cid = str(card_id)
 
         detail = prefetched if (prefetched and "error" not in prefetched) else None
@@ -599,11 +599,9 @@ class TCGGalateaPlugin(Star):
             detail = await self.card_searcher.get_card_detail(cid)
         if "error" in detail:
             logger.warning(f"详情获取失败 cid={cid}: {detail.get('error')}")
-            await self._safe_send_text_then_image(
-                event,
-                f"⚠️ 详情接口暂时失败: {detail.get('error')}\n卡片密码: {cid}",
-                image_url=f"https://cdn.233.momobako.com/ygopro/pics/{cid}.jpg",
-            )
+            await event.send(event.plain_result(
+                f"⚠️ 详情接口暂时失败: {detail.get('error')}\n卡片密码: {cid}"
+            ))
             return
 
         self.last_viewed_cards[user_id] = {
@@ -623,19 +621,17 @@ class TCGGalateaPlugin(Star):
             tags.append(f"🧬Genesys:{status_info['genesys']}pt")
         if tags:
             formatted_detail += "\n" + " | ".join(tags)
-        formatted_detail += "\n\n📎 查到具体卡后可使用 裁定 子指令"
+        formatted_detail += f"\n\n📎 /{cmd} 裁定 查看官方裁定"
 
-        local_path = None
-        local_img = await self.ydk_manager._download_image(self.card_searcher.session, cid)
-        if local_img:
-            local_path = os.path.join(self.ydk_manager.images_dir, f"temp_{cid}.jpg")
-            local_img.save(local_path)
-        await self._safe_send_text_then_image(
-            event,
-            formatted_detail,
-            image_path=local_path,
-            image_url=f"https://cdn.233.momobako.com/ygopro/pics/{cid}.jpg",
-        )
+        # 高清卡图（与原插件同源 CDN），下载后与文字同条发送
+        chain = []
+        hd_url = f"https://cdn.233.momobako.com/ygopro/pics/{cid}.jpg"
+        dest = os.path.join(self.ydk_manager.images_dir, f"detail_{cid}.jpg")
+        path = await self._download_file(self.card_searcher.session, hd_url, dest)
+        if path:
+            chain.append(Comp.Image.fromFileSystem(path))
+        chain.append(Comp.Plain(formatted_detail))
+        await event.send(event.chain_result(chain))
 
 
 
@@ -690,16 +686,15 @@ class TCGGalateaPlugin(Star):
 
     # ---------- YGO 共用（OCG / 简中 / MD / DL） ----------
 
-    async def _ygo_search(self, event: AstrMessageEvent):
+    async def _ygo_search(self, event: AstrMessageEvent, cmd: str = "OCG"):
         """模糊 / 全名 / 卡密；唯一或卡密直接详情+高清图。"""
         user_id = self._get_uid(event)
         query = self._query_arg(event)
         if not query:
             await event.send(event.plain_result(
-                "用法: 查卡 <卡名或卡密>\n"
-                "• 模糊: 查卡 青眼\n"
-                "• 全名: 查卡 青眼白龙\n"
-                "• 卡密: 查卡 89631139"
+                f"用法: /{cmd} 查卡 <卡名或卡密>\n"
+                f"• /{cmd} 查卡 青眼\n"
+                f"• /{cmd} 查卡 89631139"
             ))
             return
         await event.send(event.plain_result(f"🔍 正在检索「{query}」..."))
@@ -715,44 +710,44 @@ class TCGGalateaPlugin(Star):
             card = results[0]
             await self._send_card_detail(
                 event, card["id"], card.get("cn_name", query),
-                prefetched=card.get("detail"),
+                prefetched=card.get("detail"), cmd=cmd,
             )
             return
-        self.search_sessions[user_id] = {"results": results, "query": query}
+        self.search_sessions[user_id] = {"results": results, "query": query, "cmd": cmd}
         await event.send(event.plain_result(
-            self.card_searcher.format_search_results(results, 1, user_id)
+            self.card_searcher.format_search_results(results, 1, user_id, cmd=cmd)
             + f"\n\n🔎 已全库模糊匹配，共 {len(results)} 条"
         ))
 
-    async def _ygo_select(self, event: AstrMessageEvent):
+    async def _ygo_select(self, event: AstrMessageEvent, cmd: str = "OCG"):
         user_id = self._get_uid(event)
         num = self._int_arg(event)
         if num is None:
-            await event.send(event.plain_result("用法: 序号 <序号>"))
+            await event.send(event.plain_result(f"用法: /{cmd} 序号 <序号>"))
             return
         if user_id not in self.search_sessions:
-            await event.send(event.plain_result("请先查卡"))
+            await event.send(event.plain_result(f"请先 /{cmd} 查卡"))
             return
         results = self.search_sessions[user_id]["results"]
         if 1 <= num <= len(results):
             await self._send_card_detail(
-                event, results[num - 1]["id"], results[num - 1].get("cn_name")
+                event, results[num - 1]["id"], results[num - 1].get("cn_name"), cmd=cmd
             )
         else:
             await event.send(event.plain_result("序号超出范围"))
 
-    async def _ygo_page(self, event: AstrMessageEvent):
+    async def _ygo_page(self, event: AstrMessageEvent, cmd: str = "OCG"):
         user_id = self._get_uid(event)
         page = self._int_arg(event)
         if page is None:
-            await event.send(event.plain_result("用法: 换页 <页码>"))
+            await event.send(event.plain_result(f"用法: /{cmd} 换页 <页码>"))
             return
         if user_id not in self.search_sessions:
             await event.send(event.plain_result("没有进行中的搜索"))
             return
         results = self.search_sessions[user_id]["results"]
         await event.send(event.plain_result(
-            self.card_searcher.format_search_results(results, page, user_id)
+            self.card_searcher.format_search_results(results, page, user_id, cmd=cmd)
         ))
 
     async def _ygo_rulings(self, event: AstrMessageEvent):
@@ -855,21 +850,21 @@ class TCGGalateaPlugin(Star):
         """模糊/全名/卡密查卡，自动高清图"""
         if not self.ocg_on:
             return await self._deny_module(event, "OCG")
-        await self._ygo_search(event)
+        await self._ygo_search(event, cmd="OCG")
 
     @group_ocg.command("序号", alias={"select", "Select"})
     async def ocg_select(self, event: AstrMessageEvent):
         """选中搜索结果"""
         if not self.ocg_on:
             return await self._deny_module(event, "OCG")
-        await self._ygo_select(event)
+        await self._ygo_select(event, cmd="OCG")
 
     @group_ocg.command("换页", alias={"page", "Page"})
     async def ocg_page(self, event: AstrMessageEvent):
         """切换搜索页"""
         if not self.ocg_on:
             return await self._deny_module(event, "OCG")
-        await self._ygo_page(event)
+        await self._ygo_page(event, cmd="OCG")
 
     @group_ocg.command("裁定", alias={"ruling", "Ruling", "faq", "FAQ"})
     async def ocg_rulings(self, event: AstrMessageEvent):
@@ -909,19 +904,19 @@ class TCGGalateaPlugin(Star):
     async def sc_search(self, event: AstrMessageEvent):
         if not self.sc_on:
             return await self._deny_module(event, "简中")
-        await self._ygo_search(event)
+        await self._ygo_search(event, cmd="简中")
 
     @group_sc.command("序号", alias={"select", "Select"})
     async def sc_select(self, event: AstrMessageEvent):
         if not self.sc_on:
             return await self._deny_module(event, "简中")
-        await self._ygo_select(event)
+        await self._ygo_select(event, cmd="简中")
 
     @group_sc.command("换页", alias={"page", "Page"})
     async def sc_page(self, event: AstrMessageEvent):
         if not self.sc_on:
             return await self._deny_module(event, "简中")
-        await self._ygo_page(event)
+        await self._ygo_page(event, cmd="简中")
 
     @group_sc.command("裁定", alias={"ruling", "Ruling", "faq", "FAQ"})
     async def sc_rulings(self, event: AstrMessageEvent):
@@ -959,19 +954,19 @@ class TCGGalateaPlugin(Star):
     async def md_search(self, event: AstrMessageEvent):
         if not self.md_on:
             return await self._deny_module(event, "MD")
-        await self._ygo_search(event)
+        await self._ygo_search(event, cmd="MD")
 
     @group_md.command("序号", alias={"select", "Select"})
     async def md_select(self, event: AstrMessageEvent):
         if not self.md_on:
             return await self._deny_module(event, "MD")
-        await self._ygo_select(event)
+        await self._ygo_select(event, cmd="MD")
 
     @group_md.command("换页", alias={"page", "Page"})
     async def md_page(self, event: AstrMessageEvent):
         if not self.md_on:
             return await self._deny_module(event, "MD")
-        await self._ygo_page(event)
+        await self._ygo_page(event, cmd="MD")
 
     @group_md.command("裁定", alias={"ruling", "Ruling", "faq", "FAQ"})
     async def md_rulings(self, event: AstrMessageEvent):
@@ -1008,19 +1003,19 @@ class TCGGalateaPlugin(Star):
     async def dl_search(self, event: AstrMessageEvent):
         if not self.dl_on:
             return await self._deny_module(event, "DL")
-        await self._ygo_search(event)
+        await self._ygo_search(event, cmd="DL")
 
     @group_dl.command("序号", alias={"select", "Select"})
     async def dl_select(self, event: AstrMessageEvent):
         if not self.dl_on:
             return await self._deny_module(event, "DL")
-        await self._ygo_select(event)
+        await self._ygo_select(event, cmd="DL")
 
     @group_dl.command("换页", alias={"page", "Page"})
     async def dl_page(self, event: AstrMessageEvent):
         if not self.dl_on:
             return await self._deny_module(event, "DL")
-        await self._ygo_page(event)
+        await self._ygo_page(event, cmd="DL")
 
     @group_dl.command("裁定", alias={"ruling", "Ruling", "faq", "FAQ"})
     async def dl_rulings(self, event: AstrMessageEvent):
@@ -1066,32 +1061,8 @@ class TCGGalateaPlugin(Star):
                 return en
         return q
 
-    async def _download_to_temp(self, url: str, name: str) -> str:
-        """把远程图下载到数据目录，避免 QQ 高速路直接传大图失败。"""
-        if not url:
-            return ""
-        try:
-            tmp_dir = os.path.join(self.data_dir, "ptcg_img")
-            os.makedirs(tmp_dir, exist_ok=True)
-            path = os.path.join(tmp_dir, f"{name}.jpg")
-            to = aiohttp.ClientTimeout(total=20)
-            async with self.ptcg_searcher.session.get(url, timeout=to, ssl=False) as resp:
-                if resp.status != 200:
-                    return ""
-                data = await resp.read()
-            if not data or len(data) < 200:
-                return ""
-            # 超过 3MB 的先不落盘发原图，交给 URL 回退
-            if len(data) > 3 * 1024 * 1024:
-                return ""
-            with open(path, "wb") as f:
-                f.write(data)
-            return path
-        except Exception as e:
-            logger.warning(f"下载卡图失败: {e}")
-            return ""
-
     async def _send_ptcg_detail(self, event: AstrMessageEvent, card_id: str):
+        """图文同条发送（与原插件链式消息一致）。"""
         user_id = self._get_uid(event)
         detail = await self.ptcg_searcher.get_detail(card_id)
         if "error" in detail:
@@ -1104,23 +1075,22 @@ class TCGGalateaPlugin(Star):
         }
         text = self.ptcg_searcher.format_detail(detail)
         img = self.ptcg_searcher.image_url(detail)
-        # TCGdex 原图偏大，优先用 low 版
-        img_low = ""
-        if img and "assets.tcgdex.net" in img and not img.endswith("/low"):
-            img_low = img.rstrip("/") + "/low"
-        local = ""
-        for u in (img_low, img):
-            if not u:
-                continue
-            local = await self._download_to_temp(u, str(detail.get("id", "card")).replace("/", "_"))
-            if local:
-                break
-        await self._safe_send_text_then_image(
-            event,
-            text,
-            image_path=local or None,
-            image_url=img or None,
-        )
+        chain = []
+        if img:
+            safe = str(detail.get("id", "card")).replace("/", "_")
+            dest = os.path.join(self.data_dir, "ptcg_img", f"{safe}.png")
+            path = await self._download_file(self.ptcg_searcher.session, img, dest)
+            if path:
+                chain.append(Comp.Image.fromFileSystem(path))
+            else:
+                # 下载失败再试 URL 直发
+                try:
+                    chain.append(Comp.Image.fromURL(img))
+                except Exception as e:
+                    logger.warning(f"PTCG URL图组件失败: {e}")
+                    text += f"\n🖼 {img}"
+        chain.append(Comp.Plain(text))
+        await event.send(event.chain_result(chain))
 
     @group_ptcg.command("查卡", alias={"search", "Search"})
     async def ptcg_search(self, event: AstrMessageEvent):
@@ -1252,7 +1222,7 @@ class TCGGalateaPlugin(Star):
         md = "✅" if self.md_on else "❌"
         dl = "✅" if self.dl_on else "❌"
         pt = "✅" if self.ptcg_on else "❌"
-        text = f"""TCG工具箱 v2.3.1
+        text = f"""TCG工具箱 v2.3.2
 ================================
 全局
 • TCG帮助  TCG状态
