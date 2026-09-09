@@ -124,6 +124,16 @@ ptcg random
 | `ptcg.api_key` | `""` | pokemontcg.io 可选 API Key（提高频率限制） |
 | `ptcg.prefer_source` | `tcgdex` | 预留数据源偏好 |
 
+### 兼容性（metadata）
+
+| 项 | 值 |
+|----|-----|
+| AstrBot 版本 | `>=4.0` |
+| 支持平台 | `aiocqhttp`（QQ） |
+| 标签 | 游戏王 · 宝可梦 · 查卡 · 卡牌 · 工具箱 |
+
+> 其它平台未实测，保守不声明；若你在非 QQ 适配器上验证通过，可自行扩展 `support_platforms`。
+
 ---
 
 ## 数据源
