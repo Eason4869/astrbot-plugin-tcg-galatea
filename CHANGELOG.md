@@ -5,7 +5,31 @@
 ## [Unreleased]
 
 - 规划：MTG / WS / VG 等新卡牌游戏模块
-- 预留 `ptcg.prefer_source` 生效逻辑
+- PTCG / MD / DL 的饼图与禁卡表数据源
+
+---
+
+## [2.2.0] - 2026-09-09
+
+### Fixed
+- **`TCGGalateaPlugin` object has no attribute `config`**：`Star` 基类不会写入 `self.config`，插件初始化时自行保存配置
+
+### Changed
+- LOGO 重做：现代卡牌工具箱风格（非 Minecraft）
+- 四模块指令收敛为同构 7 类能力：
+  1. 查卡（含序号/换页，自动返回高清卡图，不发缩略图）
+  2. 卡图
+  3. 裁定
+  4. 饼图 / 更新饼图（MD·DL 映射为 T 表）
+  5. 禁卡表 / 更新禁卡表（OCG 可用；其它模块预留）
+  6. 随机一卡
+  7. 全局 `/TCG帮助` `/TCG状态`
+- 版本 `2.1.0` → `2.2.0`
+
+### Removed
+- `/OCG点数更新` `/OCG卡组检查` `/OCG导入卡组` `/OCG卡组图`
+- `/OCG起手` `/OCG抽卡` `/OCG手牌`
+- 以及其它模块上不对应的构筑/模拟指令
 
 ---
 
@@ -91,6 +115,7 @@
 
 ---
 
-[Unreleased]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v2.2.0
 [2.1.0]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v2.1.0
 [2.0.0]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v2.0.0
