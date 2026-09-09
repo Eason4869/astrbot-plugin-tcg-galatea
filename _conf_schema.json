@@ -1,15 +1,10 @@
 {
   "modules": {
-    "description": "五大模块独立开关",
+    "description": "四大模块独立开关",
     "type": "object",
     "items": {
       "enable_ocg": {
-        "description": "启用 OCG 指令组（日文/英文卡池、OCG禁卡表、RoTK饼图）",
-        "type": "bool",
-        "default": true
-      },
-      "enable_sc": {
-        "description": "启用 简中 指令组（简中禁卡表与环境）",
+        "description": "启用 OCG 指令组（查卡/饼图/禁卡表/随机）",
         "type": "bool",
         "default": true
       },
@@ -24,7 +19,7 @@
         "default": true
       },
       "enable_ptcg": {
-        "description": "启用 PTCG 指令组（宝可梦）",
+        "description": "启用 PTCG 指令组（宝可梦：查卡/随机）",
         "type": "bool",
         "default": true
       }

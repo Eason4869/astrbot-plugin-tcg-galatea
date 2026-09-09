@@ -5,7 +5,23 @@
 ## [Unreleased]
 
 - 规划：MTG / WS / VG 等新卡牌游戏模块
-- PTCG / MD / DL 的饼图与禁卡表数据源
+- MD / DL 禁卡表数据源
+
+---
+
+## [2.4.0] - 2026-09-09
+
+### Removed
+- **全部「裁定」子指令**（OCG / MD / DL / PTCG）
+- **简中指令组**与 `modules.enable_sc` 开关
+- **PTCG 饼图 / 禁卡表** 占位指令（无对应数据源）
+
+### Fixed
+- **`PTCG 随机`**：改为多候选重试 + 详情校验，降低单次检索失败
+
+### Changed
+- 四模块指令组：`OCG` · `MD` · `DL` · `PTCG`
+- 版本 `2.3.2` → `2.4.0`
 
 ---
 
@@ -48,3 +64,58 @@
 ---
 
 ## [2.2.1] - 2026-09-09
+
+### Fixed
+- 查卡详情 URL 编码与重试；详情失败时回退 CDN 图
+- 禁卡表首次更新文案标明约 1–3 分钟
+
+### Added
+- 查卡支持模糊 / 全名 / 卡密；自动高清卡图
+
+### Removed
+- 独立 `/OCG卡图` 等指令
+
+---
+
+## [2.2.0] - 2026-09-09
+
+### Fixed
+- `self.config` 未保存导致 `/TCG帮助` 报错
+
+### Changed
+- 指令统一为「模块 + 动词」；LOGO 重做
+
+### Removed
+- 构筑/模拟等低频指令
+
+---
+
+## [2.1.0] - 2026-09-09
+
+### Added
+- 插件 LOGO；README ToDo
+
+### Changed
+- 中文名改为 **TCG工具箱**；指令风格统一
+
+---
+
+## [2.0.0] - 2026-09-09
+
+### Added
+- OCG/MD/DL/PTCG 四模块开关；PTCG 查卡
+
+### Fixed
+- DL 查卡组误用 MD 环境
+
+---
+
+[Unreleased]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v2.4.0
+[2.3.2]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v2.3.2
+[2.3.1]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v2.3.1
+[2.3.0]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v2.3.0
+[2.2.1]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v2.2.1
+[2.2.0]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v2.2.0
+[2.1.0]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v2.1.0
+[2.0.0]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v2.0.0
