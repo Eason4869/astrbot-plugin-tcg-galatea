@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 TCG Galatea - 游戏王 + 宝可梦多游戏工具箱
 OCG / MD / DL / PTCG 四模块独立开关
@@ -351,7 +351,7 @@ class YugiohCardSearcher:
         return text.strip()
 
 
-@register("tcg_galatea", "Noctfom, Eason4869", "TCG工具箱", "2.4.0")
+@register("tcg_galatea", "Noctfom, Eason4869", "TCG工具箱", "2.4.1")
 class TCGGalateaPlugin(Star):
     def __init__(self, context=None, config: AstrBotConfig = None):
         super().__init__(context, config)
@@ -429,6 +429,18 @@ class TCGGalateaPlugin(Star):
     @property
     def ocg_on(self) -> bool:
         return self._mod_enabled("enable_ocg")
+
+    @property
+    def md_on(self) -> bool:
+        return self._mod_enabled("enable_md")
+
+    @property
+    def dl_on(self) -> bool:
+        return self._mod_enabled("enable_dl")
+
+    @property
+    def ptcg_on(self) -> bool:
+        return self._mod_enabled("enable_ptcg")
 
     async def terminate(self): # <--- 必须加 async
         """插件卸载/关闭时的清理工作"""
@@ -1095,7 +1107,7 @@ class TCGGalateaPlugin(Star):
         md = "✅" if self.md_on else "❌"
         dl = "✅" if self.dl_on else "❌"
         pt = "✅" if self.ptcg_on else "❌"
-        text = f"""TCG工具箱 v2.4.0
+        text = f"""TCG工具箱 v2.4.1
 ================================
 全局
 • TCG帮助  TCG状态
