@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.4.1-38b000?style=flat-square&labelColor=1b1b1b" alt="Version" />
+  <img src="https://img.shields.io/badge/Version-2.4.2-38b000?style=flat-square&labelColor=1b1b1b" alt="Version" />
   <img src="https://img.shields.io/badge/AstrBot-v4.0%2B-2b6cb0?style=flat-square&labelColor=1b1b1b" alt="AstrBot" />
   <img src="https://img.shields.io/badge/License-GPL--3.0-38b000?style=flat-square&labelColor=1b1b1b" alt="License" />
   <img src="https://img.shields.io/badge/Groups-OCG%20%7C%20MD%20%7C%20DL%20%7C%20PTCG-69b34c?style=flat-square&labelColor=1b1b1b" alt="Groups" />
@@ -50,7 +50,6 @@
 | `序号` | `select` | `<n>` | ✓ | ✓ | ✓ | ✓ |
 | `换页` | `page` | `<页码>` | ✓ | ✓ | ✓ | ✓ |
 | `饼图` | `meta` / `T表` | `[更新]` | RoTK | T表 | T表 | — |
-| `禁卡表` | `banlist` | — | ✓ | 预留 | 预留 | — |
 | `随机` | `random` | — | ✓ | ✓ | ✓ | ✓ |
 
 查卡支持模糊 / 全名 / 卡密，命中后自动出详情 + 高清卡图。

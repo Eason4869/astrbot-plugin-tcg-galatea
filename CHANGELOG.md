@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
@@ -8,6 +8,17 @@
 - MD / DL 禁卡表数据源
 
 ---
+
+
+## [2.4.2] - 2026-09-09
+
+### Fixed
+- MD/DL T 表：站点 HTML 变更导致解析为空；起点改为 `alt="Tier 1"`，翻译失败不再丢弃 T 表
+- 空数据提示改为 `/{MD|DL} 饼图 更新`
+- PTCG 查卡：英文全名命中直接出详情+卡图；图文同发失败降级纯文本+链接
+
+### Removed
+- MD/DL `禁卡表` 占位指令（无数据源）
 
 ## [2.4.1] - 2026-09-09
 
@@ -126,3 +137,4 @@
 [2.2.0]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v2.2.0
 [2.1.0]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v2.1.0
 [2.0.0]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v2.0.0
+

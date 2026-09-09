@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import urllib.parse
 import time
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
@@ -423,7 +424,7 @@ class GenericTierManager:
         # 排除掉导航栏等无效链接，只找 /tier-list/deck-types/ 下的
         deck_pattern = re.compile(r'href=["\']/tier-list/deck-types/([^"\'\?]+)["\']')
         for m in deck_pattern.finditer(content):
-            d_name = m.group(1).replace("%20", " ").strip()
+            d_name = urllib.parse.unquote(m.group(1)).strip()
             # 简单过滤垃圾
             if len(d_name) > 50 or "Update" in d_name or "/" in d_name:
                 continue
@@ -437,8 +438,10 @@ class GenericTierManager:
         # 3. 线性扫描状态机
         current_tier = None
 
-        # 找到 "Last Updated" 或 "Tier List" 标题的大致位置，忽略之前的导航栏噪音
-        start_threshold = content.lower().find("tier list update")
+        # 从 Tier 1 标记开始，忽略页面前部导航噪音
+        start_threshold = content.find('alt="Tier 1"')
+        if start_threshold == -1:
+            start_threshold = content.find("Tier 1")
         if start_threshold == -1:
             start_threshold = 0
 
@@ -573,15 +576,17 @@ class GenericTierManager:
                     tasks.append(task_coroutine)
                     deck_names_for_api.append(deck_name)
 
-                # 4. 并发执行翻译任务
+                # 4. 并发执行翻译任务（失败不阻断 T 表保存）
                 if tasks:
-                    # 【修复点 1】这里应该是 *tasks，不是 *api_tasks
-                    cn_names = await asyncio.gather(*tasks)
-
-                    # 【修复点 2】这里应该是 deck_names_for_api，不是 deck_names
-                    for en_name, cn_name in zip(deck_names_for_api, cn_names):
-                        tier_data.deck_translations[en_name] = cn_name
-                        self.translations[en_name] = cn_name
+                    try:
+                        cn_names = await asyncio.gather(*tasks, return_exceptions=True)
+                        for en_name, cn_name in zip(deck_names_for_api, cn_names):
+                            if isinstance(cn_name, Exception) or not cn_name:
+                                continue
+                            tier_data.deck_translations[en_name] = cn_name
+                            self.translations[en_name] = cn_name
+                    except Exception as te:
+                        logger.warning(f"[Tier] 批量翻译失败(忽略): {te}")
 
                 # 5. 将合并后的翻译设置到 TierData
                 tier_data.deck_translations.update(self.translations)
@@ -616,7 +621,9 @@ class TierCommandHandler:
                 else:
                     await event.send(event.plain_result("数据保存失败"))
             else:
-                await event.send(event.plain_result("数据读取返回为空"))
+                await event.send(event.plain_result(
+                    "数据读取返回为空（网页结构可能已变更或网络失败），请稍后重试 /MD 饼图 更新"
+                ))
         except Exception as e:
             await event.send(event.plain_result(f" T表获取失败: {e}"))
 
@@ -624,9 +631,10 @@ class TierCommandHandler:
         try:
             tier_data = self.manager.load_local_data(game_type)
             if not tier_data:
+                cmd = "MD" if game_type == GameType.MASTER_DUEL else "DL"
                 await event.send(
                     event.plain_result(
-                        f"未找到{game_name}数据，请先发送 /{game_type.value.upper()}更新T表"
+                        f"未找到{game_name}数据，请先发送 /{cmd} 饼图 更新"
                     )
                 )
                 return

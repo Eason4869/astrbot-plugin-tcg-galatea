@@ -351,7 +351,7 @@ class YugiohCardSearcher:
         return text.strip()
 
 
-@register("tcg_galatea", "Noctfom, Eason4869", "TCG工具箱", "2.4.1")
+@register("tcg_galatea", "Noctfom, Eason4869", "TCG工具箱", "2.4.2")
 class TCGGalateaPlugin(Star):
     def __init__(self, context=None, config: AstrBotConfig = None):
         super().__init__(context, config)
@@ -883,11 +883,6 @@ class TCGGalateaPlugin(Star):
             return await self._deny_module(event, "MD")
         await self._ygo_tier(event, GameType.MASTER_DUEL, "MD", "Master Duel")
 
-    @group_md.command("禁卡表", alias={"banlist", "Banlist"})
-    async def md_banlist(self, event: AstrMessageEvent):
-        if not self.md_on:
-            return await self._deny_module(event, "MD")
-        await event.send(event.plain_result("ℹ️ Master Duel 暂无本地禁卡表数据源。\n环境信息请使用 MD 饼图 / MD 饼图更新。"))
 
     @group_md.command("随机", alias={"random", "Random"})
     async def md_random(self, event: AstrMessageEvent):
@@ -925,11 +920,6 @@ class TCGGalateaPlugin(Star):
             return await self._deny_module(event, "DL")
         await self._ygo_tier(event, GameType.DUEL_LINKS, "DL", "Duel Links")
 
-    @group_dl.command("禁卡表", alias={"banlist", "Banlist"})
-    async def dl_banlist(self, event: AstrMessageEvent):
-        if not self.dl_on:
-            return await self._deny_module(event, "DL")
-        await event.send(event.plain_result("ℹ️ Duel Links 暂无本地禁卡表数据源。\n环境信息请使用 DL 饼图 / DL 饼图更新。"))
 
     @group_dl.command("随机", alias={"random", "Random"})
     async def dl_random(self, event: AstrMessageEvent):
@@ -973,20 +963,22 @@ class TCGGalateaPlugin(Star):
         img = self.ptcg_searcher.image_url(detail)
         chain = []
         if img:
-            safe = str(detail.get("id", "card")).replace("/", "_")
+            # 优先本地文件（QQ 上传更稳），失败则 URL 直发
+            safe = re.sub(r"[^A-Za-z0-9_-]", "_", str(detail.get("id", "card")))
             dest = os.path.join(self.data_dir, "ptcg_img", f"{safe}.png")
             path = await self._download_file(self.ptcg_searcher.session, img, dest)
-            if path:
+            if path and os.path.exists(path):
                 chain.append(Comp.Image.fromFileSystem(path))
             else:
-                # 下载失败再试 URL 直发
-                try:
-                    chain.append(Comp.Image.fromURL(img))
-                except Exception as e:
-                    logger.warning(f"PTCG URL图组件失败: {e}")
-                    text += f"\n🖼 {img}"
+                chain.append(Comp.Image.fromURL(img))
         chain.append(Comp.Plain(text))
-        await event.send(event.chain_result(chain))
+        try:
+            await event.send(event.chain_result(chain))
+        except Exception as e:
+            logger.warning(f"PTCG 图文同发失败，降级纯文本: {e}")
+            if img:
+                text += f"\n🖼 {img}"
+            await event.send(event.plain_result(text))
 
     @group_ptcg.command("查卡", alias={"search", "Search"})
     async def ptcg_search(self, event: AstrMessageEvent):
@@ -1007,6 +999,11 @@ class TCGGalateaPlugin(Star):
         results = result["all_results"]
         if len(results) == 1:
             await self._send_ptcg_detail(event, results[0]["id"])
+            return
+        # 命中英文全名则直接出详情+卡图，避免只回列表
+        exact = next((c for c in results if (c.get("name") or "").lower() == query.lower()), None)
+        if exact:
+            await self._send_ptcg_detail(event, exact["id"])
             return
         self.ptcg_searcher.search_sessions[user_id] = {"results": results, "query": query}
         await event.send(event.plain_result(self.ptcg_searcher.format_search_page(result)))
@@ -1107,7 +1104,7 @@ class TCGGalateaPlugin(Star):
         md = "✅" if self.md_on else "❌"
         dl = "✅" if self.dl_on else "❌"
         pt = "✅" if self.ptcg_on else "❌"
-        text = f"""TCG工具箱 v2.4.1
+        text = f"""TCG工具箱 v2.4.2
 ================================
 全局
 • TCG帮助  TCG状态
@@ -1123,12 +1120,12 @@ OCG [{ocg}]
 MD [{md}]
 • MD 查卡 / 序号 / 换页
 • MD 饼图 [更新]（T表）
-• MD 禁卡表（预留）/ MD 随机
+• MD 随机
 
 DL [{dl}]
 • DL 查卡 / 序号 / 换页
 • DL 饼图 [更新]（T表）
-• DL 禁卡表（预留）/ DL 随机
+• DL 随机
 
 PTCG [{pt}]
 • PTCG 查卡 <中/英>
