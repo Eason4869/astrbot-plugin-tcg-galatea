@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-1.0.5--beta-38b000?style=flat-square&labelColor=1b1b1b" alt="Version" />
+  <img src="https://img.shields.io/badge/Version-1.0.6--beta-38b000?style=flat-square&labelColor=1b1b1b" alt="Version" />
   <img src="https://img.shields.io/badge/AstrBot-v4.0%2B-2b6cb0?style=flat-square&labelColor=1b1b1b" alt="AstrBot" />
   <img src="https://img.shields.io/badge/Python-3.10%2B-3776ab?style=flat-square&labelColor=1b1b1b" alt="Python" />
   <img src="https://img.shields.io/badge/License-GPL--3.0-38b000?style=flat-square&labelColor=1b1b1b" alt="License" />
@@ -16,6 +16,8 @@
 </p>
 
 AstrBot 多游戏卡牌工具箱插件。五大指令组 **OCG / MD / DL / PTCG / VG** 独立开关，统一「组名 + 子指令」用法。
+
+> **VG（先导者）目前处于 beta，默认关闭。** 稳定使用请保持关闭；需要试用时在「插件配置」中将 `modules.enable_vg` 设为 `true`。
 
 ---
 
@@ -55,7 +57,7 @@ AstrBot 多游戏卡牌工具箱插件。五大指令组 **OCG / MD / DL / PTCG 
 | `MD` | `md` / `Md` / `masterduel` | `modules.enable_md` |
 | `DL` | `dl` / `Dl` / `duellinks` | `modules.enable_dl` |
 | `PTCG` | `ptcg` / `Ptcg` / `宝可梦` / `pokemon` | `modules.enable_ptcg` |
-| `VG` | `vg` / `Vg` / `先导者` / `Vanguard` | `modules.enable_vg` |
+| `VG` | `vg` / `Vg` / `先导者` / `Vanguard` | `modules.enable_vg`（**beta，默认关闭**） |
 
 ### 子指令一览
 
@@ -73,7 +75,7 @@ AstrBot 多游戏卡牌工具箱插件。五大指令组 **OCG / MD / DL / PTCG 
 
 - **查卡**：模糊、全名、卡密（纯数字）均可；唯一结果直接出详情+卡图，多结果出列表。
 - **PTCG 查卡**：受 [TCGdex](https://www.tcgdex.dev) 接口语言覆盖限制，目前**仅支持英文卡名 / 英文卡组代码查询**，**暂不支持简体中文**卡名（简中卡库仍在规划中，见 ToDo）。
-- **VG 查卡**：数据源 [Cardfight!! Vanguard Wiki (Fandom)](https://cardfight.fandom.com)，支持**英文卡名 / 日文假名 / 卡包编号**（如 `TD01-005`）；**暂无简中卡名**。代码与 OCG / PTCG 完全隔离。
+- **VG 查卡**（**beta，默认不启用**）：数据源 [Cardfight!! Vanguard Wiki (Fandom)](https://cardfight.fandom.com)，支持**英文卡名 / 日文假名 / 卡包编号**（如 `TD01-005`）；**暂无简中卡名**。代码与 OCG / PTCG 完全隔离。需要时在插件配置中打开 `modules.enable_vg`。
 - **序号 / 换页**：对上一次查卡列表操作。
 - **饼图**：不带参数为本地缓存；参数含「更新」则重新抓取。
   - OCG：RoTK 环境饼图  
@@ -131,7 +133,7 @@ vg random
 | `modules.enable_md` | `true` | 是否启用 MD 指令组 |
 | `modules.enable_dl` | `true` | 是否启用 DL 指令组 |
 | `modules.enable_ptcg` | `true` | 是否启用 PTCG 指令组 |
-| `modules.enable_vg` | `true` | 是否启用 VG 指令组（先导者） |
+| `modules.enable_vg` | `false` | 是否启用 VG 指令组（先导者·**beta，默认关闭**） |
 | `ptcg.api_key` | `""` | pokemontcg.io 可选 API Key（提高频率限制） |
 | `ptcg.prefer_source` | `tcgdex` | 预留数据源偏好 |
 
@@ -182,12 +184,12 @@ git clone https://github.com/Eason4869/astrbot-plugin-tcg-galatea.git
 
 | 模块 | 代号 | 状态 |
 |------|------|------|
+| Vanguard（查卡/随机） | VG | **beta，默认关闭**（`enable_vg`） |
 | 魔法风云会 | MTG | 规划中 |
 | Weiss Schwarz | WS | 规划中 |
-| Vanguard | VG | **1.0.5-beta 首版**（查卡/随机） |
-| VG 饼图 / 禁卡表 | — | 待数据源 |
+| PTCG 简中卡名 | — | 想法（TCGdex 无简中字段） |
+| VG 简中卡名 / 饼图 / 禁卡表 | — | 想法（暂无稳定数据源） |
 | MD / DL 禁卡表 | — | 想法 |
-| PTCG / VG 简中卡名 | — | 想法 |
 
 欢迎 Issue / PR 认领。
 
