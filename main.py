@@ -564,12 +564,32 @@ class TCGGalateaPlugin(Star):
             return ""
         try:
             os.makedirs(os.path.dirname(dest), exist_ok=True)
-            to = aiohttp.ClientTimeout(total=20)
-            async with session.get(url, timeout=to, ssl=False) as resp:
+            to = aiohttp.ClientTimeout(total=25)
+            async with session.get(
+                url, timeout=to, ssl=False, allow_redirects=True
+            ) as resp:
                 if resp.status != 200:
+                    logger.debug(f"下载图片 HTTP {resp.status}: {url}")
+                    return ""
+                ctype = (resp.headers.get("Content-Type") or "").lower()
+                # 拒收 HTML 错误页
+                if "html" in ctype:
+                    logger.debug(f"下载图片得到 HTML: {url}")
                     return ""
                 data = await resp.read()
             if not data or len(data) < 100:
+                return ""
+            # 简单魔数校验
+            head = data[:16]
+            is_img = (
+                head.startswith(b"\xff\xd8")
+                or head.startswith(b"\x89PNG")
+                or head.startswith(b"GIF8")
+                or (head[:4] == b"RIFF" and data[8:12] == b"WEBP")
+                or head.startswith(b"<svg")
+                or b"<svg" in data[:200].lower()
+            )
+            if not is_img and len(data) < 1000:
                 return ""
             with open(dest, "wb") as f:
                 f.write(data)
@@ -1109,7 +1129,7 @@ class TCGGalateaPlugin(Star):
         """Cardfight!! Vanguard 指令组"""
 
     async def _send_vg_detail(self, event: AstrMessageEvent, page_title: str):
-        """图文同条发送（风格对齐 PTCG）。"""
+        """图文同条发送（风格对齐 PTCG）。优先 CDN 直链本地下载。"""
         user_id = self._get_uid(event)
         detail = await self.vg_searcher.get_detail(page_title)
         if "error" in detail:
@@ -1121,27 +1141,48 @@ class TCGGalateaPlugin(Star):
             "card_data": detail,
         }
         text = self.vg_searcher.format_detail(detail)
-        img = self.vg_searcher.image_url(detail)
+
+        # 候选图：已解析直链 → FilePath 兜底
+        candidates = []
+        direct = (detail.get("image_url") or "").strip()
+        if direct:
+            candidates.append(direct)
+        fallback = self.vg_searcher.image_url(detail)
+        if fallback and fallback not in candidates:
+            candidates.append(fallback)
+
         chain = []
-        if img:
-            safe = re.sub(r"[^A-Za-z0-9_-]", "_", str(detail.get("id", "vgcard"))[:80])
-            dest = os.path.join(self.data_dir, "vg_img", f"{safe}.png")
-            try:
-                os.makedirs(os.path.dirname(dest), exist_ok=True)
-            except Exception:
-                pass
+        img_attached = False
+        safe = re.sub(r"[^A-Za-z0-9_-]", "_", str(detail.get("id", "vgcard"))[:80])
+        dest = os.path.join(self.data_dir, "vg_img", f"{safe}.png")
+        try:
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+        except Exception:
+            pass
+
+        for img in candidates:
             path = await self._download_file(self.vg_searcher.session, img, dest)
             if path and os.path.exists(path):
                 chain.append(Comp.Image.fromFileSystem(path))
-            else:
-                chain.append(Comp.Image.fromURL(img))
+                img_attached = True
+                break
+        if not img_attached and direct:
+            # 本地失败再试 URL 直发（部分适配器可拉 CDN）
+            chain.append(Comp.Image.fromURL(direct))
+            img_attached = True
+
+        if not img_attached and detail.get("url"):
+            text += f"\n🖼 {detail.get('url')}"
+
         chain.append(Comp.Plain(text))
         try:
             await event.send(event.chain_result(chain))
         except Exception as e:
             logger.warning(f"VG 图文同发失败，降级纯文本: {e}")
-            if img:
-                text += f"\n🖼 {img}"
+            if direct:
+                text += f"\n🖼 {direct}"
+            elif detail.get("url"):
+                text += f"\n🖼 {detail.get('url')}"
             await event.send(event.plain_result(text))
 
     @group_vg.command("查卡", alias={"search", "Search"})
