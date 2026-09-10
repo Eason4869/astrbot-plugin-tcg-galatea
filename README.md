@@ -74,6 +74,7 @@ AstrBot 多游戏卡牌工具箱插件。四大指令组 **OCG / MD / DL / PTCG*
 说明：
 
 - **查卡**：模糊、全名、卡密（纯数字）均可；唯一结果直接出详情+卡图，多结果出列表。
+- **PTCG 查卡**：受 [TCGdex](https://www.tcgdex.dev) 接口语言覆盖限制，目前**仅支持英文卡名 / 英文卡组代码查询**，**暂不支持简体中文**卡名（简中卡库仍在规划中，见 ToDo）。
 - **序号 / 换页**：对上一次查卡列表操作。
 - **饼图**：不带参数为查看本地缓存；参数含「更新」则重新抓取。
   - OCG：RoTK 环境饼图  
@@ -99,7 +100,8 @@ MD 饼图
 
 DL 饼图更新
 
-PTCG 查卡 皮卡丘
+# PTCG 目前仅支持英文查询（见上方说明）
+PTCG 查卡 Pikachu
 PTCG 查卡 Charizard
 PTCG 序号 1
 PTCG 随机
@@ -144,7 +146,7 @@ ptcg random
 | OCG 饼图 | RoTK |
 | OCG 禁卡表 | 官方禁限表接口 |
 | MD / DL T 表 | masterduelmeta / duellinksmeta |
-| 宝可梦 | [TCGdex](https://www.tcgdex.dev)（主）→ [pokemontcg.io](https://pokemontcg.io)（备） |
+| 宝可梦 | [TCGdex](https://www.tcgdex.dev)（主）→ [pokemontcg.io](https://pokemontcg.io)（备）·**仅英文，暂无简中** |
 
 ---
 
