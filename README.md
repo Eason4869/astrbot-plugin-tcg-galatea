@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-1.0.0-38b000?style=flat-square&labelColor=1b1b1b" alt="Version" />
+  <img src="https://img.shields.io/badge/Version-1.0.1-38b000?style=flat-square&labelColor=1b1b1b" alt="Version" />
   <img src="https://img.shields.io/badge/AstrBot-v4.0%2B-2b6cb0?style=flat-square&labelColor=1b1b1b" alt="AstrBot" />
   <img src="https://img.shields.io/badge/Python-3.10%2B-3776ab?style=flat-square&labelColor=1b1b1b" alt="Python" />
   <img src="https://img.shields.io/badge/License-GPL--3.0-38b000?style=flat-square&labelColor=1b1b1b" alt="License" />
@@ -69,6 +69,7 @@ AstrBot 多游戏卡牌工具箱插件。四大指令组 **OCG / MD / DL / PTCG*
 | `换页` | `page` / `Page` | `<页码>` | ✓ | ✓ | ✓ | ✓ |
 | `饼图` | `meta` / `pie` / `T表` | `[更新]` | RoTK | T 表 | T 表 | — |
 | **`禁卡表`** | `banlist` / `limited` | — | **✓** | — | — | — |
+| **`简中禁卡表`** | `scbanlist` / `SC禁卡表` | — | **✓** | — | — | — |
 | `随机` | `random` / `Random` | — | ✓ | ✓ | ✓ | ✓ |
 
 说明：
@@ -76,10 +77,10 @@ AstrBot 多游戏卡牌工具箱插件。四大指令组 **OCG / MD / DL / PTCG*
 - **查卡**：模糊、全名、卡密（纯数字）均可；唯一结果直接出详情+卡图，多结果出列表。
 - **PTCG 查卡**：受 [TCGdex](https://www.tcgdex.dev) 接口语言覆盖限制，目前**仅支持英文卡名 / 英文卡组代码查询**，**暂不支持简体中文**卡名（简中卡库仍在规划中，见 ToDo）。
 - **序号 / 换页**：对上一次查卡列表操作。
-- **饼图**：不带参数为查看本地缓存；参数含「更新」则重新抓取。
+- **饼图**：不带参数为本地缓存；参数含「更新」则重新抓取。
   - OCG：RoTK 环境饼图  
   - MD / DL：duelmeta 的 T 表  
-- **禁卡表**：目前仅 **OCG** 提供（`OCG 禁卡表`，可选 `OCG|简中` 后缀）；MD / DL / PTCG 暂无本地数据源。
+- **禁卡表**：`OCG 禁卡表` 为日版 OCG 官方禁限表；`OCG 简中禁卡表` 为简体中文官方表（数据来自 gameking 官方接口，卡名经百鸽解析）。两者相互独立，首次更新各需约 1–3 分钟。查卡详情里会附带简中状态标签（`🇨🇳简中:…`）。
 - **随机**：随机一卡，自动发送详情与卡图。
 
 ### 常用示例
@@ -93,6 +94,7 @@ OCG 查卡 89631139
 OCG 序号 1
 OCG 饼图更新
 OCG 禁卡表
+OCG 简中禁卡表
 OCG 随机
 
 MD 饼图更新

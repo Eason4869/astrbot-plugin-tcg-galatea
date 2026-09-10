@@ -10,6 +10,26 @@
 
 ---
 
+## [1.0.1] - 2026-09-10
+
+### Added
+
+- **OCG 简中禁卡表指令**：`OCG 简中禁卡表`（别名 `scbanlist` / `SC禁卡表` / `scban`）
+  - 后端 `BanlistManager` 的 `env=sc`（官方 gameking 接口 `type=2`）此前一直未暴露指令入口
+  - 简中禁限表经百鸽解析卡名后写入本地缓存；查卡详情会附带 `🇨🇳简中:…` 状态标签
+  - 与 `OCG 禁卡表`（日版）相互独立，首次更新各约 1–3 分钟
+
+### Fixed
+
+- README 中「可选 `OCG|简中` 后缀」为未实现的描述，已改为独立指令说明
+- README 目录页内锚点曾被 `test` 类资产校验误判（上游 multica_bridge 同类问题；本仓库文档同步澄清）
+
+### Changed
+
+- 版本号 1.0.0 → **1.0.1**（`metadata.yaml` / `@register` / 帮助文案 / README 徽章）
+
+---
+
 ## [1.0.0] - 2026-09-09
 
 **首个正式版。**
@@ -70,5 +90,6 @@
 
 ---
 
-[Unreleased]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v1.0.0
