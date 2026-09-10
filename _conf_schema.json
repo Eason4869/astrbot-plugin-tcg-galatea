@@ -1,6 +1,6 @@
 {
   "modules": {
-    "description": "四大模块独立开关",
+    "description": "五大模块独立开关",
     "type": "object",
     "items": {
       "enable_ocg": {
@@ -20,6 +20,11 @@
       },
       "enable_ptcg": {
         "description": "启用 PTCG 指令组（宝可梦：查卡/随机）",
+        "type": "bool",
+        "default": true
+      },
+      "enable_vg": {
+        "description": "启用 VG 指令组（先导者：查卡/随机，Fandom 数据源）",
         "type": "bool",
         "default": true
       }
