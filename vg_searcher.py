@@ -236,11 +236,15 @@ class VGSearcher:
         if not pick_img:
             for im in images:
                 low = im.lower()
-                if low.endswith((".png", ".jpg", ".jpeg", ".webp")) and "sample" not in low:
+                if low.endswith((".png", ".jpg", ".jpeg", ".webp")) and "logo" not in low:
                     pick_img = im
                     break
             if not pick_img and images:
                 pick_img = images[0]
+
+        direct_img = ""
+        if pick_img:
+            direct_img = await self._resolve_image_url(pick_img)
 
         detail = {
             "id": title,
@@ -257,17 +261,46 @@ class VGSearcher:
             "flavor": _strip_wiki(fields.get("flavor", "")),
             "set_id": _first_set_id(fields),
             "image_file": pick_img,
+            "image_url": direct_img,
             "source": "Fandom",
             "url": f"https://cardfight.fandom.com/wiki/{quote(title.replace(' ', '_'))}",
         }
         self._detail_cache[title] = detail
         return dict(detail)
 
+    async def _resolve_image_url(self, filename: str) -> str:
+        """File: 名 → static.wikia.nocookie.net 直链（QQ 侧更稳）。"""
+        fname = (filename or "").strip()
+        if not fname:
+            return ""
+        data = await self._api(
+            {
+                "action": "query",
+                "titles": "File:" + fname,
+                "prop": "imageinfo",
+                "iiprop": "url",
+            }
+        )
+        if not data:
+            return ""
+        pages = (data.get("query") or {}).get("pages") or {}
+        for p in pages.values():
+            infos = p.get("imageinfo") or []
+            if infos:
+                url = (infos[0] or {}).get("url") or ""
+                if url:
+                    return url
+        return ""
+
     def image_url(self, card: Dict[str, Any]) -> Optional[str]:
+        # 1) 已解析的 CDN 直链
+        direct = (card.get("image_url") or "").strip()
+        if direct:
+            return direct
+        # 2) 按文件名再拼 FilePath（会 302，作兜底）
         fname = (card.get("image_file") or "").strip()
         if not fname:
             return None
-        # MediaWiki 会通过 Special:FilePath 302 到 static.wikia.nocookie.net
         return (
             "https://cardfight.fandom.com/wiki/Special:FilePath/"
             + quote(fname.replace(" ", "_"))
@@ -329,10 +362,6 @@ class VGSearcher:
             if flavor:
                 info.append("")
                 info.append(f"📖 风味:\n{flavor}")
-
-            if card.get("url"):
-                info.append("")
-                info.append(f"🔗 {card['url']}")
 
             return "\n".join(info)
         except Exception as e:
