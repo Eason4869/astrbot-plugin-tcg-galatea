@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-1.0.6--beta-38b000?style=flat-square&labelColor=1b1b1b" alt="Version" />
+  <img src="https://img.shields.io/badge/Version-1.1.0--beta-38b000?style=flat-square&labelColor=1b1b1b" alt="Version" />
   <img src="https://img.shields.io/badge/AstrBot-v4.0%2B-2b6cb0?style=flat-square&labelColor=1b1b1b" alt="AstrBot" />
   <img src="https://img.shields.io/badge/Python-3.10%2B-3776ab?style=flat-square&labelColor=1b1b1b" alt="Python" />
   <img src="https://img.shields.io/badge/License-GPL--3.0-38b000?style=flat-square&labelColor=1b1b1b" alt="License" />
