@@ -4,9 +4,40 @@
 
 ## [Unreleased]
 
-- 魔法风云会 / Weiss Schwarz / Vanguard 等新游戏模块
+- 魔法风云会 / Weiss Schwarz 等新游戏模块
 - MD / DL 禁卡表数据源
-- PTCG 简中卡库
+- PTCG / VG 简中卡名映射
+- VG 饼图 / 禁卡表（若找到稳定数据源）
+
+---
+
+## [1.0.6-beta] - 2026-09-10
+
+**VG 收尾：默认关闭、出图修复、README 整理。**
+
+### Added
+
+- **VG 指令组**（独立模块，与 OCG / PTCG 代码隔离）
+  - 新文件 `vg_searcher.py`：独立 aiohttp session、独立会话缓存、独立格式化
+  - `VG 查卡 <英文卡名|日文假名|卡包编号>`（Fandom MediaWiki API）
+  - `VG 序号` / `VG 换页` / `VG 随机`
+  - 别名：`vg` / `Vanguard` / `先导者`
+  - 详情：名称、假名、编号、等级/力量/护盾、集团、效果、卡图
+
+### Changed
+
+- `modules.enable_vg` **默认 `false`**（beta，默认不启用）
+- README：注明 VG 处于 beta、默认关闭；ToDo 按实际能力重写
+- 版本号 → **1.0.6-beta**（dev）
+
+### Fixed
+
+- VG 查卡改为 imageinfo 解析 CDN 直链出图，不再只丢 wiki 链接
+- README：删除大 logo；count.getloli 去掉 `no-badge` 巨长文本
+
+### Notes
+
+- 数据源 Fandom，**暂无简中卡名**；不影响 OCG / MD / DL / PTCG
 
 ---
 
@@ -90,6 +121,7 @@
 
 ---
 
-[Unreleased]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/compare/v1.0.6-beta...HEAD
+[1.0.6-beta]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/compare/v1.0.1...v1.0.6-beta
 [1.0.1]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v1.0.0

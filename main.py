@@ -40,6 +40,7 @@ from .duel_simulator import DuelSimulator #引入 DuelSimulator
 from .banlist_manager import BanlistManager #引入 BanlistManager
 
 from .ptcg_searcher import PTCGSearcher, POKEMON_CN_MAP
+from .vg_searcher import VGSearcher
 
 
 class YugiohCardSearcher:
@@ -351,7 +352,7 @@ class YugiohCardSearcher:
         return text.strip()
 
 
-@register("tcg_galatea", "Eason4869", "TCG工具箱", "1.0.1")
+@register("tcg_galatea", "Eason4869", "TCG工具箱", "1.0.6-beta")
 class TCGGalateaPlugin(Star):
     def __init__(self, context=None, config: AstrBotConfig = None):
         super().__init__(context, config)
@@ -370,6 +371,9 @@ class TCGGalateaPlugin(Star):
                 ptcg_cfg = {}
         self.ptcg_searcher = PTCGSearcher(api_key=ptcg_cfg.get("api_key", ""))
         self._ptcg_cn_to_en = {cn: en for en, cn in POKEMON_CN_MAP.items()}
+
+        # === VG（独立于 OCG / PTCG）===
+        self.vg_searcher = VGSearcher()
 
         # === 修复数据持久化违规 ===
         # 1. 源码目录：仅用于读取随插件附带的静态文件 (如 card_ids.json)
@@ -442,6 +446,10 @@ class TCGGalateaPlugin(Star):
     def ptcg_on(self) -> bool:
         return self._mod_enabled("enable_ptcg")
 
+    @property
+    def vg_on(self) -> bool:
+        return self._mod_enabled("enable_vg")
+
     async def terminate(self): # <--- 必须加 async
         """插件卸载/关闭时的清理工作"""
         # 关闭 aiohttp session
@@ -449,6 +457,8 @@ class TCGGalateaPlugin(Star):
             await self.card_searcher.close() # <--- 直接 await，确保资源释放
         if self.ptcg_searcher:
             await self.ptcg_searcher.close()
+        if self.vg_searcher:
+            await self.vg_searcher.close()
 
     def _load_card_ids(self):
         """加载纯ID列表到内存"""
@@ -554,12 +564,32 @@ class TCGGalateaPlugin(Star):
             return ""
         try:
             os.makedirs(os.path.dirname(dest), exist_ok=True)
-            to = aiohttp.ClientTimeout(total=20)
-            async with session.get(url, timeout=to, ssl=False) as resp:
+            to = aiohttp.ClientTimeout(total=25)
+            async with session.get(
+                url, timeout=to, ssl=False, allow_redirects=True
+            ) as resp:
                 if resp.status != 200:
+                    logger.debug(f"下载图片 HTTP {resp.status}: {url}")
+                    return ""
+                ctype = (resp.headers.get("Content-Type") or "").lower()
+                # 拒收 HTML 错误页
+                if "html" in ctype:
+                    logger.debug(f"下载图片得到 HTML: {url}")
                     return ""
                 data = await resp.read()
             if not data or len(data) < 100:
+                return ""
+            # 简单魔数校验
+            head = data[:16]
+            is_img = (
+                head.startswith(b"\xff\xd8")
+                or head.startswith(b"\x89PNG")
+                or head.startswith(b"GIF8")
+                or (head[:4] == b"RIFF" and data[8:12] == b"WEBP")
+                or head.startswith(b"<svg")
+                or b"<svg" in data[:200].lower()
+            )
+            if not is_img and len(data) < 1000:
                 return ""
             with open(dest, "wb") as f:
                 f.write(data)
@@ -1089,6 +1119,158 @@ class TCGGalateaPlugin(Star):
                 continue
         await event.send(event.plain_result("随机失败，请稍后再试"))
 
+    # ================= 指令组：VG（独立） =================
+
+    @filter.command_group(
+        "VG",
+        alias={"vg", "Vg", "先导者", "Vanguard", "vanguard"},
+    )
+    def group_vg(self):
+        """Cardfight!! Vanguard 指令组"""
+
+    async def _send_vg_detail(self, event: AstrMessageEvent, page_title: str):
+        """图文同条发送（风格对齐 PTCG）。优先 CDN 直链本地下载。"""
+        user_id = self._get_uid(event)
+        detail = await self.vg_searcher.get_detail(page_title)
+        if "error" in detail:
+            await event.send(event.plain_result(detail["error"]))
+            return
+        self.vg_searcher.last_viewed[user_id] = {
+            "card_id": detail.get("id", page_title),
+            "card_name": detail.get("name", "未知"),
+            "card_data": detail,
+        }
+        text = self.vg_searcher.format_detail(detail)
+
+        # 候选图：已解析直链 → FilePath 兜底
+        candidates = []
+        direct = (detail.get("image_url") or "").strip()
+        if direct:
+            candidates.append(direct)
+        fallback = self.vg_searcher.image_url(detail)
+        if fallback and fallback not in candidates:
+            candidates.append(fallback)
+
+        chain = []
+        img_attached = False
+        safe = re.sub(r"[^A-Za-z0-9_-]", "_", str(detail.get("id", "vgcard"))[:80])
+        dest = os.path.join(self.data_dir, "vg_img", f"{safe}.png")
+        try:
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+        except Exception:
+            pass
+
+        for img in candidates:
+            path = await self._download_file(self.vg_searcher.session, img, dest)
+            if path and os.path.exists(path):
+                chain.append(Comp.Image.fromFileSystem(path))
+                img_attached = True
+                break
+        if not img_attached and direct:
+            # 本地失败再试 URL 直发（部分适配器可拉 CDN）
+            chain.append(Comp.Image.fromURL(direct))
+            img_attached = True
+
+        if not img_attached and detail.get("url"):
+            text += f"\n🖼 {detail.get('url')}"
+
+        chain.append(Comp.Plain(text))
+        try:
+            await event.send(event.chain_result(chain))
+        except Exception as e:
+            logger.warning(f"VG 图文同发失败，降级纯文本: {e}")
+            if direct:
+                text += f"\n🖼 {direct}"
+            elif detail.get("url"):
+                text += f"\n🖼 {detail.get('url')}"
+            await event.send(event.plain_result(text))
+
+    @group_vg.command("查卡", alias={"search", "Search"})
+    async def vg_search(self, event: AstrMessageEvent):
+        if not self.vg_on:
+            return await self._deny_module(event, "VG")
+        raw = self._query_arg(event)
+        if not raw:
+            await event.send(
+                event.plain_result(
+                    "用法: 查卡 <英文卡名|日文假名|卡包编号>\n"
+                    "例如: 查卡 Blaster Blade\n例如: 查卡 TD01-005"
+                )
+            )
+            return
+        result = await self.vg_searcher.search(raw, page=1)
+        if "error" in result:
+            await event.send(event.plain_result(f"❌ {result['error']}"))
+            return
+        results = result["all_results"]
+        # 唯一结果直出详情；多结果出列表
+        if len(results) == 1:
+            await self._send_vg_detail(event, results[0]["id"])
+            return
+        user_id = self._get_uid(event)
+        self.vg_searcher.search_sessions[user_id] = {
+            "results": results,
+            "query": raw,
+        }
+        await event.send(event.plain_result(self.vg_searcher.format_search_page(result)))
+
+    @group_vg.command("序号", alias={"select", "Select"})
+    async def vg_select(self, event: AstrMessageEvent):
+        if not self.vg_on:
+            return await self._deny_module(event, "VG")
+        user_id = self._get_uid(event)
+        num = self._int_arg(event)
+        if num is None:
+            await event.send(event.plain_result("用法: 序号 <序号>"))
+            return
+        if user_id not in self.vg_searcher.search_sessions:
+            await event.send(event.plain_result("请先查卡"))
+            return
+        results = self.vg_searcher.search_sessions[user_id]["results"]
+        if 1 <= num <= len(results):
+            await self._send_vg_detail(event, results[num - 1]["id"])
+        else:
+            await event.send(event.plain_result("序号超出范围"))
+
+    @group_vg.command("换页", alias={"page", "Page"})
+    async def vg_page(self, event: AstrMessageEvent):
+        if not self.vg_on:
+            return await self._deny_module(event, "VG")
+        user_id = self._get_uid(event)
+        page = self._int_arg(event)
+        if page is None:
+            await event.send(event.plain_result("用法: 换页 <页码>"))
+            return
+        if user_id not in self.vg_searcher.search_sessions:
+            await event.send(event.plain_result("没有进行中的搜索"))
+            return
+        all_r = self.vg_searcher.search_sessions[user_id]["results"]
+        page_size = 10
+        total_pages = max(1, (len(all_r) + page_size - 1) // page_size)
+        if page < 1 or page > total_pages:
+            await event.send(event.plain_result(f"页码超出范围 (1-{total_pages})"))
+            return
+        page_data = {
+            "results": all_r[(page - 1) * page_size : page * page_size],
+            "page": page,
+            "page_size": page_size,
+            "total": len(all_r),
+            "total_pages": total_pages,
+            "source": "Fandom",
+            "query": self.vg_searcher.search_sessions[user_id].get("query", ""),
+        }
+        await event.send(event.plain_result(self.vg_searcher.format_search_page(page_data)))
+
+    @group_vg.command("随机", alias={"random", "Random"})
+    async def vg_random(self, event: AstrMessageEvent):
+        if not self.vg_on:
+            return await self._deny_module(event, "VG")
+        detail = await self.vg_searcher.random_card()
+        if "error" in detail:
+            await event.send(event.plain_result(f"❌ {detail['error']}"))
+            return
+        await self._send_vg_detail(event, detail["id"])
+
     # ================= 全局 =================
 
     @filter.command("TCG状态", alias={"/TCG状态", "/模块状态", "/tcgstatus", "tcgstatus", "TCGStatus", "tcgStatus"})
@@ -1098,6 +1280,7 @@ class TCGGalateaPlugin(Star):
             ("MD", self.md_on),
             ("DL", self.dl_on),
             ("PTCG", self.ptcg_on),
+            ("VG", self.vg_on),
         ]
         lines = ["📦 TCG工具箱 · 模块状态"]
         lines += [f"  {'✅' if on else '❌'} {n}" for n, on in rows]
@@ -1113,7 +1296,8 @@ class TCGGalateaPlugin(Star):
         md = "✅" if self.md_on else "❌"
         dl = "✅" if self.dl_on else "❌"
         pt = "✅" if self.ptcg_on else "❌"
-        text = f"""TCG工具箱 v1.0.1
+        vg = "✅" if self.vg_on else "❌"
+        text = f"""TCG工具箱 v1.0.6-beta
 ================================
 全局
 • TCG帮助  TCG状态
@@ -1141,6 +1325,11 @@ PTCG [{pt}]
 • PTCG 查卡 <中/英>
 • PTCG 序号 / 换页
 • PTCG 随机
+
+VG [{vg}]  先导者（Fandom，英/日/编号）
+• VG 查卡 <en|假名|编号>
+• VG 序号 / 换页
+• VG 随机
 
 查卡自动出高清卡图
 ================================"""
