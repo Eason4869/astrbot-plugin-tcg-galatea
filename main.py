@@ -845,6 +845,16 @@ class TCGGalateaPlugin(Star):
             return await self._deny_module(event, "OCG")
         await self._ygo_banlist_env(event, "ocg", "OCG")
 
+    @group_ocg.command(
+        "简中禁卡表",
+        alias={"scbanlist", "ScBanlist", "SC禁卡表", "scban", "ScBan"},
+    )
+    async def ocg_sc_banlist(self, event: AstrMessageEvent):
+        """简中禁卡表（较慢）"""
+        if not self.ocg_on:
+            return await self._deny_module(event, "OCG")
+        await self._ygo_banlist_env(event, "sc", "简中")
+
     @group_ocg.command("随机", alias={"random", "Random"})
     async def ocg_random(self, event: AstrMessageEvent):
         """随机一卡"""
@@ -1114,6 +1124,7 @@ OCG [{ocg}]
 • OCG 序号 <n>   OCG 换页 <n>
 • OCG 饼图 [更新]
 • OCG 禁卡表
+• OCG 简中禁卡表
 • OCG 随机
 
 MD [{md}]
