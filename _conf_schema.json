@@ -24,9 +24,9 @@
         "default": true
       },
       "enable_vg": {
-        "description": "启用 VG 指令组（先导者：查卡/随机，Fandom 数据源）",
+        "description": "启用 VG 指令组（先导者·beta，默认关闭；Fandom 数据源，暂无简中）",
         "type": "bool",
-        "default": true
+        "default": false
       }
     }
   },
