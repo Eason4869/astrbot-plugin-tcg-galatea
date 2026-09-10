@@ -351,7 +351,7 @@ class YugiohCardSearcher:
         return text.strip()
 
 
-@register("tcg_galatea", "Eason4869", "TCG工具箱", "1.0.0")
+@register("tcg_galatea", "Eason4869", "TCG工具箱", "1.0.1")
 class TCGGalateaPlugin(Star):
     def __init__(self, context=None, config: AstrBotConfig = None):
         super().__init__(context, config)
@@ -1113,7 +1113,7 @@ class TCGGalateaPlugin(Star):
         md = "✅" if self.md_on else "❌"
         dl = "✅" if self.dl_on else "❌"
         pt = "✅" if self.ptcg_on else "❌"
-        text = f"""TCG工具箱 v1.0.0
+        text = f"""TCG工具箱 v1.0.1
 ================================
 全局
 • TCG帮助  TCG状态
