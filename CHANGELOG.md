@@ -11,6 +11,16 @@
 
 ---
 
+## [1.1.0-beta] - 2026-09-10
+
+**main 发布号。内容与 dev `1.0.6-beta` 一致，仅版本号不同。**
+
+### Changed
+
+- 版本号 **1.0.6-beta → 1.1.0-beta**（main）
+
+---
+
 ## [1.0.6-beta] - 2026-09-10
 
 **VG 收尾：默认关闭、出图修复、README 整理。**
@@ -121,7 +131,8 @@
 
 ---
 
-[Unreleased]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/compare/v1.0.6-beta...HEAD
+[Unreleased]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/compare/v1.1.0-beta...HEAD
+[1.1.0-beta]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/compare/v1.0.6-beta...v1.1.0-beta
 [1.0.6-beta]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/compare/v1.0.1...v1.0.6-beta
 [1.0.1]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/Eason4869/astrbot-plugin-tcg-galatea/releases/tag/v1.0.0
