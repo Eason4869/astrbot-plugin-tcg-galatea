@@ -1,14 +1,7 @@
 # 🟩 TCG工具箱
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Eason4869/astrbot-plugin-tcg-galatea/main/logo.png" width="128" height="128" alt="TCG工具箱 Logo" />
-</p>
-
-<p align="center">
-  <a href="https://github.com/Eason4869/astrbot-plugin-tcg-galatea">
-    <img src="https://count.getloli.com/@astrbot-plugin-tcg-galatea?theme=moebooru&no-badge=true" alt="Visitors" />
-    <img src="https://komarev.com/ghpvc/?username=Eason4869.astrbot-plugin-tcg-galatea&label=%F0%9F%9F%A9%20Visitors&color=38b000&style=flat-square&labelColor=1b1b1b" alt="Visitors" />
-  </a>
+  <img src="https://komarev.com/ghpvc/?username=Eason4869.astrbot-plugin-tcg-galatea&label=Visitors&color=38b000&style=flat-square&labelColor=1b1b1b" alt="Visitors" />
 </p>
 
 <p align="center">
